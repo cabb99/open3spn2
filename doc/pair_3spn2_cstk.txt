@@ -1,0 +1,12 @@
+\documentclass[12pt]{article}
+\usepackage{amssymb, amsmath,amsfonts}
+\pagenumbering{gobble}
+\begin{document}
+$$
+E_{bp} = 
+\begin{cases}
+{U}_{m}^{\text{rep}} (\epsilon,{\alpha},r) +  \frac{1}{2}(1+\text{cos}(\Delta {\phi}_{1})) f( {K},\Delta \theta_{\text{1}})f( K,\Delta {\theta}_{2}) U_\text{m}^\text{attr}(\epsilon,{\alpha},r) & r < r_{o}\\
+\frac{1}{2}(1+\text{cos}(\Delta {\phi}_{1})) f( {K},\Delta {\theta}_{1})f( {K},\Delta {\theta}_{2}) U_\text{m}^\text{attr}(\epsilon,{\alpha},r) & r \geq r_{o} \\
+\end{cases}
+$$
+\end{document}

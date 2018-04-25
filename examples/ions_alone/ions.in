@@ -1,0 +1,189 @@
+# Test system for LAMMPS simulation
+
+units       real
+atom_style  full
+log         sim.log
+
+# For a single processor calculation
+variable T equal 300 # Simulation temperature
+variable salt equal 100.0 # Salt concentration [mM]
+
+# Random number seed for Langevin integrator
+variable random equal 12345
+
+# Specify the different interaction styles
+bond_style      class2
+angle_style     hybrid harmonic stacking/3spn2
+dihedral_style  3spn2
+# pair_stype 3spn2 [dna type] [temperature] [salt concentration (mM)] [short range cutoff] [Coulombic cutoff]
+pair_style      hybrid/overlay 3spn2 bdna ${T} ${salt} 18.0 20.0 coul/long 20.0 coul/diel 12 gauss/cut 12.0 gauss/cut 12.0 lj/cut 12.0
+
+# Periodic boundary conditions
+boundary p p p
+
+# Turn on Newton's 2nd law
+newton on  #yes
+
+# Read in the configuration
+read_data ions_conf.in
+
+# Specify the pair coefficients
+pair_coeff  1   1   3spn2   0.239006    4.500000
+pair_coeff  2   2   3spn2   0.239006    6.200000
+pair_coeff  3   3   3spn2   0.239006    5.400000
+pair_coeff  4   4   3spn2   0.239006    7.100000
+pair_coeff  5   5   3spn2   0.239006    4.900000
+pair_coeff  6   6   3spn2   0.239006    6.400000
+pair_coeff  7   7   3spn2   0.239006    5.400000
+pair_coeff  8   8   3spn2   0.239006    7.100000
+pair_coeff  9   9   3spn2   0.239006    4.900000
+pair_coeff  10  10  3spn2   0.239006    6.400000
+pair_coeff  11  11  3spn2   0.239006    5.400000
+pair_coeff  12  12  3spn2   0.239006    7.100000
+pair_coeff  13  13  3spn2   0.239006    4.900000
+pair_coeff  14  14  3spn2   0.239006    6.400000
+pair_modify mix arithmetic
+
+pair_coeff 1*17 15*17 none # Zeroing out other interactions
+
+# Specifying the ion parameters from Freeman et al. JCP, 135:165104, 2011.
+variable myDielectric equal 78
+dielectric ${myDielectric}
+
+
+#Turnin off pair interactions from 3SPN2
+pair_coeff 1 1*17 none
+pair_coeff 2*17 15*17 none
+
+# Apply LJ attraction between ion sites
+pair_coeff 1 1 lj/cut  0.18379 6.86 # P-Na+
+pair_coeff 1 15 lj/cut  0.02510 4.14 # P-Na+
+pair_coeff 1 16 lj/cut  0.11950 4.87 # P-Mg#+
+pair_coeff 1 17 lj/cut  0.08121 5.5425 # P-Cl-
+pair_coeff 15 15 lj/cut 0.01121 2.43 # Na+-Na+
+pair_coeff 15 16 lj/cut 0.04971 2.37 # Na+-Mg2+
+pair_coeff 15 17 lj/cut 0.08387 3.1352 # Na+-Cl-
+pair_coeff 16 16 lj/cut 0.89460 1.412 # Mg2+-Mg2+
+pair_coeff 16 17 lj/cut 0.49737 4.74 # Mg2+-Cl-
+pair_coeff 17 17 lj/cut 0.03585 4.045 # Cl--Cl-
+
+# Apply coul/long between all ions (solve using ewald sum)
+pair_coeff 1 1 coul/long
+pair_coeff 1 15*17 coul/long
+pair_coeff 15*17 15*17 coul/long
+
+kspace_style pppm 1.0e-4
+
+# Apply distance-dependent dielectric and correction factor
+pair_coeff 1 1 coul/diel ${myDielectric}  6.86 0.5
+pair_coeff 1 15 coul/diel ${myDielectric} 3.44 1.25
+pair_coeff 1 16 coul/diel ${myDielectric} 3.75 1.00
+pair_coeff 1 17 coul/diel ${myDielectric}  4.2 0.5
+pair_coeff 15 15 coul/diel ${myDielectric} 2.7 0.57
+pair_coeff 15 16 coul/diel ${myDielectric} 2.37 0.5
+pair_coeff 15 17 coul/diel ${myDielectric} 3.9 2.06
+pair_coeff 16 16 coul/diel ${myDielectric} 1.412 0.5
+pair_coeff 16 17 coul/diel ${myDielectric} 4.48 0.57
+pair_coeff 17 17 coul/diel ${myDielectric} 4.2 0.56
+
+# Add hydration barriers 
+# First set of barriers (H r sigma)
+pair_coeff 1 15 gauss/cut 1 3.15488 4.1 0.57
+pair_coeff 1 16 gauss/cut 1 1.29063 6.1 0.5
+pair_coeff 1 17 gauss/cut 1 0.83652 6.7 1.5
+pair_coeff 15 15 gauss/cut 1 0.17925 5.8 0.57
+pair_coeff 15 17 gauss/cut 1 5.49713 3.3 0.57
+pair_coeff 16 17 gauss/cut 1 1.09943 5.48 0.44
+pair_coeff 17 17 gauss/cut 1 0.23901 6.2 0.5
+
+# Second set of barriers
+pair_coeff 1 15  gauss/cut 2 0.47801 6.5 0.4
+pair_coeff 1 16 gauss/cut 2 0.97992 8.3 1.2
+pair_coeff 15 17 gauss/cut 2 0.47801 5.6 0.4
+pair_coeff 16 17 gauss/cut 2 0.05975  8.16 0.35
+
+# Specifying the mixing rules for cross interactions between the pair styles (excluded volume)
+pair_coeff 1 2 lj/cut 0.239000 5.350000 6.005172
+pair_coeff 1 3 lj/cut 0.239000 4.950000 5.556187
+pair_coeff 1 4 lj/cut 0.239000 5.800000 6.510280
+pair_coeff 1 5 lj/cut 0.239000 4.700000 5.275572
+pair_coeff 1 6 lj/cut 0.239000 5.450000 6.117418
+pair_coeff 1 7 lj/cut 0.239000 4.950000 5.556187
+pair_coeff 1 8 lj/cut 0.239000 5.800000 6.510280
+pair_coeff 1 9 lj/cut 0.239000 4.700000 5.275572
+pair_coeff 1 10 lj/cut 0.239000 5.450000 6.117418
+pair_coeff 1 11 lj/cut 0.239000 4.950000 5.556187
+pair_coeff 1 12 lj/cut 0.239000 5.800000 6.510280
+pair_coeff 1 13 lj/cut 0.239000 4.700000 5.275572
+pair_coeff 1 14 lj/cut 0.239000 5.450000 6.117418
+pair_coeff 2 15 lj/cut 0.239000 4.315000 4.843424
+pair_coeff 3 15 lj/cut 0.239000 3.915000 4.394439
+pair_coeff 4 15 lj/cut 0.239000 4.765000 5.348532
+pair_coeff 5 15 lj/cut 0.239000 3.665000 4.113823
+pair_coeff 6 15 lj/cut 0.239000 4.415000 4.955670
+pair_coeff 7 15 lj/cut 0.239000 3.915000 4.394439
+pair_coeff 8 15 lj/cut 0.239000 4.765000 5.348532
+pair_coeff 9 15 lj/cut 0.239000 3.665000 4.113823
+pair_coeff 10 15 lj/cut 0.239000 4.415000 4.955670
+pair_coeff 11 15 lj/cut 0.239000 3.915000 4.394439
+pair_coeff 12 15 lj/cut 0.239000 4.765000 5.348532
+pair_coeff 13 15 lj/cut 0.239000 3.665000 4.113823
+pair_coeff 14 15 lj/cut 0.239000 4.415000 4.955670
+pair_coeff 2 16 lj/cut 0.239000 3.806000 4.272091
+pair_coeff 3 16 lj/cut 0.239000 3.406000 3.823106
+pair_coeff 4 16 lj/cut 0.239000 4.256000 4.777198
+pair_coeff 5 16 lj/cut 0.239000 3.156000 3.542490
+pair_coeff 6 16 lj/cut 0.239000 3.906000 4.384337
+pair_coeff 7 16 lj/cut 0.239000 3.406000 3.823106
+pair_coeff 8 16 lj/cut 0.239000 4.256000 4.777198
+pair_coeff 9 16 lj/cut 0.239000 3.156000 3.542490
+pair_coeff 10 16 lj/cut 0.239000 3.906000 4.384337
+pair_coeff 11 16 lj/cut 0.239000 3.406000 3.823106
+pair_coeff 12 16 lj/cut 0.239000 4.256000 4.777198
+pair_coeff 13 16 lj/cut 0.239000 3.156000 3.542490
+pair_coeff 14 16 lj/cut 0.239000 3.906000 4.384337
+pair_coeff 2 17 lj/cut 0.239000 5.122500 5.749812
+pair_coeff 3 17 lj/cut 0.239000 4.722500 5.300827
+pair_coeff 4 17 lj/cut 0.239000 5.572500 6.254920
+pair_coeff 5 17 lj/cut 0.239000 4.472500 5.020212
+pair_coeff 6 17 lj/cut 0.239000 5.222500 5.862058
+pair_coeff 7 17 lj/cut 0.239000 4.722500 5.300827
+pair_coeff 8 17 lj/cut 0.239000 5.572500 6.254920
+pair_coeff 9 17 lj/cut 0.239000 4.472500 5.020212
+pair_coeff 10 17 lj/cut 0.239000 5.222500 5.862058
+pair_coeff 11 17 lj/cut 0.239000 4.722500 5.300827
+pair_coeff 12 17 lj/cut 0.239000 5.572500 6.254920
+pair_coeff 13 17 lj/cut 0.239000 4.472500 5.020212
+pair_coeff 14 17 lj/cut 0.239000 5.222500 5.862058
+
+# Specify parameters for the neighbor list
+neighbor	4.0 multi
+neigh_modify    check yes
+
+# A timestep of 0.02 ps
+timestep 10.0
+
+# Initialize velocities from a Gaussian distribution
+velocity all create ${T} ${random} rot yes mom yes dist gaussian
+
+# Calculating the different components of the non-bonded energy
+compute edna all pair 3spn2 
+variable ebp equal c_edna[1] # Base pairing energy
+variable ecstk equal c_edna[2] # Cross stacking energy
+variable eexcl equal c_edna[3] # Excluded volume energy
+variable dna_ecoul equal c_edna[4] # DNA coulombic energy
+variable nbp equal c_edna[5] # Number of base pairs
+
+# Specifying the frequency of thermodynamic output
+thermo 2000
+thermo_style custom step v_nbp ebond eangle edihed v_ebp v_ecstk v_eexcl v_dna_ecoul temp
+
+# Specifying a Langevin integrator to perform a simulation in the NVT ensemble
+fix 1 all langevin ${T} ${T} 500 ${random} gjf yes
+fix 2 all nve
+
+# Write configuration to file
+dump 1 all xyz 2000 traj.xyz
+
+# Run X number of steps
+run 50000

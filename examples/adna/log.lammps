@@ -1,0 +1,6 @@
+LAMMPS (1 Feb 2014)
+# Test system for LAMMPS simulation
+
+units       real
+atom_style  full
+log         sim.log

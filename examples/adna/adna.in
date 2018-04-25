@@ -1,0 +1,78 @@
+# Test system for LAMMPS simulation
+
+units       real
+atom_style  full
+log         sim.log
+
+# For a single processor calculation
+variable T equal 300 # Simulation temperature
+variable salt equal 100.0 # Salt concentration [mM]
+
+# Random number seed for Langevin integrator
+variable random equal 12345
+
+# Specify the different interaction styles
+bond_style      class2
+angle_style     hybrid harmonic stacking/3spn2
+dihedral_style  3spn2
+# pair_stype 3spn2 [dna type] [temperature] [salt concentration (mM)] [short range cutoff] [Coulombic cutoff]
+pair_style      hybrid/overlay 3spn2 adna ${T} ${salt} 18.0 50.0
+
+# Periodic boundary conditions
+boundary p p p
+
+# Turn on Newton's 2nd law
+newton on  #yes
+
+# Read in the configuration
+read_data adna_conf.in
+
+# Specify the pair coefficients
+pair_coeff  1   1   3spn2   0.239006    4.500000
+pair_coeff  2   2   3spn2   0.239006    6.200000
+pair_coeff  3   3   3spn2   0.239006    4.460000
+pair_coeff  4   4   3spn2   0.239006    5.500000
+pair_coeff  5   5   3spn2   0.239006    4.200000
+pair_coeff  6   6   3spn2   0.239006    5.700000
+pair_coeff  7   7   3spn2   0.239006    4.460000
+pair_coeff  8   8   3spn2   0.239006    5.500000
+pair_coeff  9   9   3spn2   0.239006    4.200000
+pair_coeff  10  10  3spn2   0.239006    5.700000
+pair_coeff  11  11  3spn2   0.239006    4.460000
+pair_coeff  12  12  3spn2   0.239006    5.500000
+pair_coeff  13  13  3spn2   0.239006    4.200000
+pair_coeff  14  14  3spn2   0.239006    5.700000
+pair_modify mix arithmetic
+pair_coeff 1*17 15*17 none # Zeroing out other interactions
+
+# Specify parameters for the neighbor list
+neighbor	4.0 multi
+neigh_modify    check yes
+
+# A timestep of 0.02 ps
+timestep 20.0
+
+# Initialize velocities from a Gaussian distribution
+velocity all create ${T} ${random} rot yes mom yes dist gaussian
+
+# Calculating the different components of the non-bonded energy
+compute edna all pair 3spn2 
+variable ebp equal c_edna[1] # Base pairing energy
+variable ecstk equal c_edna[2] # Cross stacking energy
+variable eexcl equal c_edna[3] # Excluded volume energy
+variable dna_ecoul equal c_edna[4] # DNA coulombic energy
+variable nbp equal c_edna[5] # Number of base pairs
+
+# Specifying the frequency of thermodynamic output
+thermo 2000
+thermo_style custom step v_nbp ebond eangle edihed v_ebp v_ecstk v_eexcl v_dna_ecoul temp
+
+# Specifying a Langevin integrator to perform a simulation in the NVT ensemble
+fix 1 all langevin ${T} ${T} 500 ${random} gjf yes
+fix 2 all nve
+
+# Write configuration to file
+dump 1 all xyz 2000 traj.xyz
+
+# Run X number of steps
+run 50000

@@ -1,0 +1,82 @@
+variable myDielectric equal "249.4 - 7.88E-01 * v_T + 7.20E-04 * v_T * v_T"
+dielectric ${myDielectric}
+
+pair_coeff 1 1*18 none
+pair_coeff 2*18 15*18 none
+
+# Apply coul/long between all ions (solve using ewald sum)
+pair_coeff 1 1 coul/long
+pair_coeff 1 15*18 coul/long
+pair_coeff 15*18 15*18 coul/long
+
+kspace_style pppm 1.0e-4
+#pair_modify tabinner 12 # Closer than this distance, we calculate a modified dielectric
+
+pair_coeff 1 1 table ./GCGI.table P-P
+pair_coeff 1 15 table ./GCGI.table P-Na
+pair_coeff 1 16 table ./GCGI.table P-Mg
+pair_coeff 1 17 table ./GCGI.table P-Cl
+pair_coeff 1 18 table ./GCGI.table P-N
+pair_coeff 15 15 table ./GCGI.table Na-Na
+pair_coeff 15 16 table ./GCGI.table Na-Mg
+pair_coeff 15 17 table ./GCGI.table Na-Cl
+pair_coeff 15 18 table ./GCGI.table Na-N
+pair_coeff 16 16 table ./GCGI.table Mg-Mg
+pair_coeff 16 17 table ./GCGI.table Mg-Cl
+pair_coeff 16 18 table ./GCGI.table Mg-N
+pair_coeff 17 17 table ./GCGI.table Cl-Cl
+pair_coeff 17 18 table ./GCGI.table Cl-N
+pair_coeff 18 18 table ./GCGI.table N-N
+
+pair_coeff 2 15 lj/cut 0.239000 4.346964 4.879302
+pair_coeff 3 15 lj/cut 0.239000 3.946964 4.430317
+pair_coeff 4 15 lj/cut 0.239000 4.796964 5.384410
+pair_coeff 5 15 lj/cut 0.239000 3.696964 4.149702
+pair_coeff 6 15 lj/cut 0.239000 4.446964 4.991548
+pair_coeff 7 15 lj/cut 0.239000 3.946964 4.430317
+pair_coeff 8 15 lj/cut 0.239000 4.796964 5.384410
+pair_coeff 9 15 lj/cut 0.239000 3.696964 4.149702
+pair_coeff 10 15 lj/cut 0.239000 4.446964 4.991548
+pair_coeff 11 15 lj/cut 0.239000 3.946964 4.430317
+pair_coeff 12 15 lj/cut 0.239000 4.796964 5.384410
+pair_coeff 13 15 lj/cut 0.239000 3.696964 4.149702
+pair_coeff 14 15 lj/cut 0.239000 4.446964 4.991548
+pair_coeff 2 16 lj/cut 0.239000 5.100000 5.724556
+pair_coeff 3 16 lj/cut 0.239000 4.700000 5.275572
+pair_coeff 4 16 lj/cut 0.239000 5.550000 6.229664
+pair_coeff 5 16 lj/cut 0.239000 4.450000 4.994956
+pair_coeff 6 16 lj/cut 0.239000 5.200000 5.836803
+pair_coeff 7 16 lj/cut 0.239000 4.700000 5.275572
+pair_coeff 8 16 lj/cut 0.239000 5.550000 6.229664
+pair_coeff 9 16 lj/cut 0.239000 4.450000 4.994956
+pair_coeff 10 16 lj/cut 0.239000 5.200000 5.836803
+pair_coeff 11 16 lj/cut 0.239000 4.700000 5.275572
+pair_coeff 12 16 lj/cut 0.239000 5.550000 6.229664
+pair_coeff 13 16 lj/cut 0.239000 4.450000 4.994956
+pair_coeff 14 16 lj/cut 0.239000 5.200000 5.836803
+pair_coeff 2 17 lj/cut 0.239000 5.338830 5.992634
+pair_coeff 3 17 lj/cut 0.239000 4.938830 5.543649
+pair_coeff 4 17 lj/cut 0.239000 5.788830 6.497742
+pair_coeff 5 17 lj/cut 0.239000 4.688830 5.263034
+pair_coeff 6 17 lj/cut 0.239000 5.438830 6.104880
+pair_coeff 7 17 lj/cut 0.239000 4.938830 5.543649
+pair_coeff 8 17 lj/cut 0.239000 5.788830 6.497742
+pair_coeff 9 17 lj/cut 0.239000 4.688830 5.263034
+pair_coeff 10 17 lj/cut 0.239000 5.438830 6.104880
+pair_coeff 11 17 lj/cut 0.239000 4.938830 5.543649
+pair_coeff 12 17 lj/cut 0.239000 5.788830 6.497742
+pair_coeff 13 17 lj/cut 0.239000 4.688830 5.263034
+pair_coeff 14 17 lj/cut 0.239000 5.438830 6.104880
+pair_coeff 2 18 lj/cut 0.239000 4.750000 5.331695
+pair_coeff 3 18 lj/cut 0.239000 4.350000 4.882710
+pair_coeff 4 18 lj/cut 0.239000 5.200000 5.836803
+pair_coeff 5 18 lj/cut 0.239000 4.100000 4.602094
+pair_coeff 6 18 lj/cut 0.239000 4.850000 5.443941
+pair_coeff 7 18 lj/cut 0.239000 4.350000 4.882710
+pair_coeff 8 18 lj/cut 0.239000 5.200000 5.836803
+pair_coeff 9 18 lj/cut 0.239000 4.100000 4.602094
+pair_coeff 10 18 lj/cut 0.239000 4.850000 5.443941
+pair_coeff 11 18 lj/cut 0.239000 4.350000 4.882710
+pair_coeff 12 18 lj/cut 0.239000 5.200000 5.836803
+pair_coeff 13 18 lj/cut 0.239000 4.100000 4.602094
+pair_coeff 14 18 lj/cut 0.239000 4.850000 5.443941

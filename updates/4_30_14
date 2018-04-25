@@ -1,0 +1,6 @@
+USER-3SPN2 has been updated to permit the simulation of B-DNA with intrinsic
+curvature.  Additionally, examples files have been added to demonstrate
+simulations with explicit ions and an (experimental) model for A-DNA.  The
+syntax of pair_style 3spn2 has been changed in order to accomodate these
+different styles of DNA.  Please refer to the Documentation for details.
+

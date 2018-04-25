@@ -1,0 +1,10 @@
+Configuration files were generated with the command;
+
+python ../../utils/make_bp_params.py ../seq 
+x3dna_utils cp_std BDNA
+rebuild -atomic bp_step.par atomistic.pdb
+python ../../utils/pdb2cg_dna.py atomistic.pdb 
+../../DSIM_ICNF/icnf.exe ../seq 1 1 . 0
+<copy contents of dna_conf.in into conf_lammps.in>
+python ../../utils/make_list_files.py conf_lammps.in 
+mv conf_lammps.in bdna_curv_conf.in

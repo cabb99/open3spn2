@@ -1,0 +1,84 @@
+<HTML>
+<CENTER><A HREF = "http://lammps.sandia.gov">LAMMPS WWW Site</A> - <A HREF = "Manual.html">LAMMPS Documentation</A> - <A HREF = "Section_commands.html#comm">LAMMPS Commands</A> 
+</CENTER>
+
+
+
+
+
+
+<HR>
+
+<H3>angle_style 3spn2_stacking command 
+</H3>
+<P><B>Syntax:</B>
+</P>
+<PRE>angle_style 3spn2_stacking 
+</PRE>
+<P><B>Examples:</B>
+</P>
+<UL><LI>angle_style 3spn2_stacking
+<LI>angle_coeff 11  3.439293    3.716    101.15  3.    6. 
+</UL>
+<P><B>Description:</B>
+</P>
+<P>The <I>3spn2_stacking</I> angle style uses the potential
+</P>
+<CENTER><IMG SRC = "./angle_3spn2_stacking.jpg">
+</CENTER>
+<P>with the Morse potential Em decomposed into repulsive
+</P>
+<CENTER><IMG SRC = "./3spn2_morse_rep.jpg">
+</CENTER>
+<P>and attractive components
+</P>
+<CENTER><IMG SRC = "./3spn2_morse_attr.jpg">
+</CENTER>
+<P>The attractive portion of the potential is modulated by the function f
+</P>
+<CENTER><IMG SRC = "./3spn2_f.jpg">
+</CENTER>
+<P>which uses the difference between the instantenous angle and reference angle
+(Delta theta = theta - theta_o) and a factor K.  Technically, this energy
+function represents a non-bonded interaction; however, it is currently
+implemented as an "angle" because it acts between well-defined 3 sites.
+The user is referred to <A HREF = "#Hinckley">(Hinckley)</A> for additional details.
+</P>
+<P>The following coefficients must be defined for each angle type via the
+<A HREF = "angle_coeff.html">angle_coeff</A> command as in the example above, or in
+the data file or restart files read by the <A HREF = "read_data.html">read_data</A>
+or <A HREF = "read_restart.html">read_restart</A> commands:
+</P>
+<UL><LI>epsilon (energy)
+<LI>r0 (angstroms) 
+<LI>theta0 (degrees)
+<LI>alpha (unitless)
+<LI>K (unitless) 
+</UL>
+<P>NOTE: When using this angle style in a simulations of coarse-grained DNA, it is
+used together with the <A HREF = "angle_hybrid.html">angle_hybrid</A> command.  
+As noted in the documentation, pair_coefficients for hybrid angle styles are
+not stored in the restart file.  Therefore, they must be restated in the LAMMPS
+input file when restarting.
+</P>
+<HR>
+
+<P><B>Restrictions:</B> none
+</P>
+<P>This angle style can only be used if LAMMPS was built with the
+USER-3SPN2 package (which it is by default).  See the <A HREF = "Section_start.html#start_3">Making
+LAMMPS</A> section for more info on packages.
+</P>
+<P><B>Related commands:</B>
+</P>
+<P><A HREF = "angle_coeff.html">angle_coeff</A>
+</P>
+<P><B>Default:</B> none
+</P>
+<HR>
+
+<A NAME = "Hinckley"></A>
+
+<P><B>(Hinckley)</B> Hinckley, Freeman, Whitmer and de Pablo. J Chem Phys, XXX, XXX (2013).
+</P>
+</HTML>

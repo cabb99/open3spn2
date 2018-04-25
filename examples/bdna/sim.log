@@ -1,0 +1,152 @@
+
+# For a single processor calculation
+variable T equal 300 # Simulation temperature
+variable salt equal 100.0 # Salt concentration [mM]
+
+# Random number seed for Langevin integrator
+variable random equal 12345
+
+# Specify the different interaction styles
+bond_style      class2
+angle_style     hybrid harmonic stacking/3spn2
+dihedral_style  3spn2
+# pair_stype 3spn2 [dna type] [temperature] [salt concentration (mM)] [short range cutoff] [Coulombic cutoff]
+pair_style      hybrid/overlay 3spn2 bdna ${T} ${salt} 18.0 50.0
+pair_style      hybrid/overlay 3spn2 bdna 300 ${salt} 18.0 50.0
+pair_style      hybrid/overlay 3spn2 bdna 300 100 18.0 50.0
+
+# Periodic boundary conditions
+boundary p p p
+
+# Turn on Newton's 2nd law
+newton on  #yes
+
+# Read in the configuration
+read_data bdna_conf.in
+  orthogonal box = (-124.384 -124.384 -124.384) to (124.384 124.384 124.384)
+  1 by 1 by 1 MPI processor grid
+  reading atoms ...
+  190 atoms
+  scanning bonds ...
+  2 = max bonds/atom
+  scanning angles ...
+  3 = max angles/atom
+  scanning dihedrals ...
+  1 = max dihedrals/atom
+  reading bonds ...
+  188 bonds
+  reading angles ...
+  308 angles
+  reading dihedrals ...
+  120 dihedrals
+  3 = max # of 1-2 neighbors
+  4 = max # of 1-3 neighbors
+  6 = max # of 1-4 neighbors
+  9 = max # of special neighbors
+
+# Specify the pair coefficients
+pair_coeff  1   1   3spn2   0.239006    4.500000
+pair_coeff  2   2   3spn2   0.239006    6.200000
+pair_coeff  3   3   3spn2   0.239006    5.400000
+pair_coeff  4   4   3spn2   0.239006    7.100000
+pair_coeff  5   5   3spn2   0.239006    4.900000
+pair_coeff  6   6   3spn2   0.239006    6.400000
+pair_coeff  7   7   3spn2   0.239006    5.400000
+pair_coeff  8   8   3spn2   0.239006    7.100000
+pair_coeff  9   9   3spn2   0.239006    4.900000
+pair_coeff  10  10  3spn2   0.239006    6.400000
+pair_coeff  11  11  3spn2   0.239006    5.400000
+pair_coeff  12  12  3spn2   0.239006    7.100000
+pair_coeff  13  13  3spn2   0.239006    4.900000
+pair_coeff  14  14  3spn2   0.239006    6.400000
+pair_modify mix arithmetic
+pair_coeff 1*17 15*17 none # Zeroing out other interactions
+
+# Specify parameters for the neighbor list
+neighbor	4.0 multi
+neigh_modify    check yes
+
+# A timestep of 0.02 ps
+timestep 20.0
+
+# Initialize velocities from a Gaussian distribution
+velocity all create ${T} ${random} rot yes mom yes dist gaussian
+velocity all create 300 ${random} rot yes mom yes dist gaussian
+velocity all create 300 12345 rot yes mom yes dist gaussian
+
+# Calculating the different components of the non-bonded energy
+compute edna all pair 3spn2
+variable ebp equal c_edna[1] # Base pairing energy
+variable ecstk equal c_edna[2] # Cross stacking energy
+variable eexcl equal c_edna[3] # Excluded volume energy
+variable dna_ecoul equal c_edna[4] # DNA coulombic energy
+variable nbp equal c_edna[5] # Number of base pairs
+
+# Specifying the frequency of thermodynamic output
+thermo 2000
+thermo_style custom step v_nbp ebond eangle edihed v_ebp v_ecstk v_eexcl v_dna_ecoul temp
+
+# Specifying a Langevin integrator to perform a simulation in the NVT ensemble
+fix 1 all langevin ${T} ${T} 500 ${random} gjf yes
+fix 1 all langevin 300 ${T} 500 ${random} gjf yes
+fix 1 all langevin 300 300 500 ${random} gjf yes
+fix 1 all langevin 300 300 500 12345 gjf yes
+fix 2 all nve
+
+# Write configuration to file
+dump 1 all xyz 2000 traj.xyz
+
+# Run X number of steps
+run 50000
+Memory usage per processor = 5.39255 Mbytes
+Step nbp E_bond E_angle E_dihed ebp ecstk eexcl dna_ecou Temp 
+       0           32 0.0020119571   -196.16379   -172.08407   -145.07625   -38.325896            0    11.198987          300 
+    2000           28    21.743756   -117.97591    -155.4056     -131.686    -30.14944   0.20545955    11.146357    252.95043 
+    4000           28    23.161556   -126.56901   -155.54969   -133.25669    -29.99265   0.24502046    10.811139    285.28236 
+    6000           25    23.281511     -118.307   -154.83867   -125.03948    -27.33377  0.021032553    10.914363    275.04415 
+    8000           26    28.868851   -111.90194   -154.88825   -125.44653   -26.988246   0.41715906    11.200162     297.8188 
+   10000           27    21.810131   -116.23809   -151.54986   -129.31519   -28.432788  0.036366457    10.648208    295.72736 
+   12000           25    24.755995   -124.27241   -156.11652    -121.5504   -30.332466   0.24620675     10.80682    293.21204 
+   14000           25     33.18664   -111.50444     -154.228   -124.05953   -29.279113   0.14635835    10.929646    269.49491 
+   16000           24    19.624122   -116.24095    -156.5101   -127.26325   -25.970169    0.1012429    10.900966    291.47015 
+   18000           28    30.552743   -113.62659   -155.36013   -126.23408   -29.498875   0.97757789    11.438725    290.30837 
+   20000           28    31.183665   -118.54427   -156.17378   -128.74114   -30.530923  0.086764638    11.203124    283.10901 
+   22000           27     30.20534   -129.71616   -159.02052   -127.66083   -29.112077   0.75104473    11.328084    296.85449 
+   24000           27    25.825706   -115.64832   -156.39062   -127.55811   -28.822214   0.42114608    11.185189    306.19466 
+   26000           26    24.093109   -122.63548   -158.83071   -129.36204    -30.37384   0.15108204    10.936404    277.49773 
+   28000           27    28.478594   -130.97519   -157.96882   -129.44175   -30.071328   0.52435164    11.217309    280.61021 
+   30000           25    23.073524   -112.11355   -152.08727   -123.68419   -26.578472  0.053871366    10.911356    297.10294 
+   32000           26    26.365962   -115.57249   -153.36855   -130.03448   -28.127313   0.25150555    10.633485    271.12239 
+   34000           28    23.732003   -128.52526   -159.57134   -127.75272   -28.758522   0.46418616    10.887037    283.79914 
+   36000           26    26.534274   -121.18562   -158.98056   -125.96886   -28.951831   0.26845085    10.983392    276.79118 
+   38000           28    31.184458   -117.18716   -154.28445   -131.12597    -27.40654   0.81020524    11.382298    290.58426 
+   40000           26    27.303408    -108.2819   -155.66576    -127.7727   -30.320781   0.29053755    11.749231    256.07624 
+   42000           26    26.101923   -129.68447   -157.97982   -125.86601   -30.236873   0.54510948    11.386186    268.29538 
+   44000           31     27.04948   -118.50376   -159.12196   -131.74603   -29.795857  0.052253353    11.158468    290.14759 
+   46000           28    24.261715   -128.96167   -156.42945   -132.69082   -30.819052   0.23866453    11.396561    303.45691 
+   48000           31     25.73103   -115.28369   -155.46365   -135.04346   -28.335103   0.61627872    11.009032    265.48828 
+   50000           29    22.999133   -101.51196   -155.68627   -128.53834   -29.731467   0.72576318    11.371263    322.43369 
+Loop time of 35.4633 on 1 procs for 50000 steps with 190 atoms
+
+Pair  time (%) = 29.2794 (82.5626)
+Bond  time (%) = 4.82536 (13.6066)
+Neigh time (%) = 0.468104 (1.31997)
+Comm  time (%) = 0.0237575 (0.0669918)
+Outpt time (%) = 0.00941816 (0.0265575)
+Other time (%) = 0.857233 (2.41724)
+
+Nlocal:    190 ave 190 max 190 min
+Histogram: 1 0 0 0 0 0 0 0 0 0
+Nghost:    0 ave 0 max 0 min
+Histogram: 1 0 0 0 0 0 0 0 0 0
+Neighs:    12868 ave 12868 max 12868 min
+Histogram: 1 0 0 0 0 0 0 0 0 0
+
+Total # of neighbors = 12868
+Ave neighs/atom = 67.7263
+Ave special neighs/atom = 7.13684
+Neighbor list builds = 1172
+Dangerous builds = 0
+
+Please see the log.cite file for references relevant to this simulation
+

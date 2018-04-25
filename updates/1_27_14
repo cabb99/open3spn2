@@ -1,0 +1,10 @@
+The USER-3SPN2 package was updated on 1/27/14 to fix issues that occasionally resulted in segfaults.
+The changes are as follows:
+
+1) The hard-coded numbers of sites in pair_3spn2.cpp was changed from n=14 to n=40, thus allowing the simulation 
+of DNA with other site types (tethers, nanoparticles or proteins).  The choice of 40 is arbitrary.
+
+2) Checks were added basepair.cpp to prevent segmentation faults that occur when simulating large systems across many 
+processors.  
+
+If you have any questions or concerns, please contact Dan Hinckley (dhinckley@wisc.edu).
