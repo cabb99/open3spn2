@@ -138,7 +138,7 @@ class LmpConf:
             if typea is "S" and typeb is "P" and typec is "S":
                 neighborType1 = siteDict[self.atoms[a.a-1+1].type]
                 neighborType2 = siteDict[self.atoms[a.c-1+1].type]
-                kbend = BSP[neighborType1][neighborType2]
+                kbend = SPS[neighborType1][neighborType2]
             theta = self.calculate_bend_angle(a.a,a.b,a.c)
 
             # Only write if angle is type 1 (list)
