@@ -28,6 +28,7 @@ the 3SPN.2 model, as well as recent publications by the de Pablo group and
 others.
 
 https://uchic.ag/3spn2
+
 http://ime.uchicago.edu/de_pablo_lab/research/dna_folding_and_hybridization/3spn.2/
 
 Moving forward, we hope to coordinate all updates and communication through github.
