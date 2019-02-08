@@ -1,0 +1,80 @@
+<ForceField>
+  <AtomTypes>
+    <!-- DNA particles -->
+    <Type name="P" class="Phosphate" element="P" mass="94.9696"/>
+    <Type name="S" class="Sugar" element="H" mass="83.1104"/>
+    <Type name="A" class="Base" element="N" mass="134.1220"/>
+    <Type name="T" class="Base" element="S" mass="125.1078"/>
+    <Type name="G" class="Base" element="C" mass="150.1214"/>
+    <Type name="C" class="Base" element="O" mass="110.0964"/>
+    <!-- Ion particles -->
+    <Type name="Na" class="Ion" element="Mg" mass="0"/>
+    <Type name="Mg" class="Ion" element="Fe" mass="0"/>
+    <Type name="Ca" class="Ion" element="C" mass="0"/>
+  </AtomTypes>
+  <Residues>
+    <Residue name="DA">
+        <Atom name="P"  type="P"/>
+        <Atom name="S"  type="S"/>
+        <Atom name="A"  type="A"/>
+    </Residue>
+    <Residue name="DC">
+        <Atom name="P"  type="P"/>
+        <Atom name="S"  type="S"/>
+        <Atom name="C"  type="C"/>    
+    </Residue>
+    <Residue name="DT">
+        <Atom name="P"  type="P"/>
+        <Atom name="S"  type="S"/>
+        <Atom name="T"  type="T"/>
+    </Residue>
+    <Residue name="DG">
+        <Atom name="P"  type="P"/>
+        <Atom name="S"  type="S"/>
+        <Atom name="G"  type="G"/>
+    </Residue>
+    <!-- Initial residues -->
+    <Residue name="DAI">
+        <Atom name="S"  type="S"/>
+        <Atom name="A"  type="A"/>
+    </Residue>
+    <Residue name="DCi">
+        <Atom name="S"  type="S"/>
+        <Atom name="C"  type="C"/>    
+    </Residue>
+    <Residue name="DTi">
+        <Atom name="S"  type="S"/>
+        <Atom name="T"  type="T"/>
+    </Residue>
+    <Residue name="DGi">
+        <Atom name="S"  type="S"/>
+        <Atom name="G"  type="G"/>
+    </Residue>
+    <!-- Final residues residues -->
+    <!--<Residue name="DAf">
+        <Atom name="P"  type="P"/>
+        <Atom name="S"  type="S"/>
+        <Atom name="A"  type="A"/>
+    </Residue>
+    <Residue name="DCf">
+        <Atom name="P"  type="P"/>
+        <Atom name="S"  type="S"/>
+        <Atom name="C"  type="C"/>    
+    </Residue>
+    <Residue name="DTf">
+        <Atom name="P"  type="P"/>
+        <Atom name="S"  type="S"/>
+        <Atom name="T"  type="T"/>
+    </Residue>
+    <Residue name="DGf">
+        <Atom name="P"  type="P"/>
+        <Atom name="S"  type="S"/>
+        <Atom name="G"  type="G"/>
+    </Residue>-->
+  </Residues>
+  <Patches>
+    <Patch name="AT">
+      <RemoveAtom name="A5"/>
+    </Patch>
+  </Patches>
+</ForceField>
