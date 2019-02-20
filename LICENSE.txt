@@ -1,5 +1,6 @@
 MIT License
 
+Copyright (c) 2019 Carlos Bueno
 Copyright (c) 2018 Daniel Hinckley, Juan J de Pablo and coworkers
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
