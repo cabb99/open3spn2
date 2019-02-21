@@ -1,0 +1,25 @@
+Name,DNA type,Folder,Trajectory,Log,Energy term
+Bond,A,examples/adna/,traj.xyz,sim.log,E_bond
+Angle,A,examples/adna/,traj.xyz,sim_harmonic.log,E_angle
+Stacking,A,examples/adna/,traj.xyz,sim_stacking.log,E_angle
+Dihedral,A,examples/adna/,traj.xyz,sim.log,E_dihed
+BasePair,A,examples/adna/,traj.xyz,sim.log,ebp
+CrossStacking,A,examples/adna/,traj.xyz,sim.log,ecstk
+Exclusion,A,examples/adna/,traj.xyz,sim.log,eexcl
+Electrostatics,A,examples/adna/,traj.xyz,sim.log,dna_ecou
+Bond,B,examples/bdna/,traj.xyz,sim.log,E_bond
+Angle,B,examples/bdna/,traj.xyz,sim_harmonic.log,E_angle
+Stacking,B,examples/bdna/,traj.xyz,sim_stacking.log,E_angle
+Dihedral,B,examples/bdna/,traj.xyz,sim.log,E_dihed
+BasePair,B,examples/bdna/,traj.xyz,sim.log,ebp
+CrossStacking,B,examples/bdna/,traj.xyz,sim.log,ecstk
+Exclusion,B,examples/bdna/,traj.xyz,sim.log,eexcl
+Electrostatics,B,examples/bdna/,traj.xyz,sim.log,dna_ecou
+Bond,B_curved,examples/bdna_curv/,traj.xyz,sim.log,E_bond
+Angle,B_curved,examples/bdna_curv/,traj.xyz,sim_harmonic.log,E_angle
+Stacking,B_curved,examples/bdna_curv/,traj.xyz,sim_stacking.log,E_angle
+Dihedral,B_curved,examples/bdna_curv/,traj.xyz,sim.log,E_dihed
+BasePair,B_curved,examples/bdna_curv/,traj.xyz,sim.log,ebp
+CrossStacking,B_curved,examples/bdna_curv/,traj.xyz,sim.log,ecstk
+Exclusion,B_curved,examples/bdna_curv/,traj.xyz,sim.log,eexcl
+Electrostatics,B_curved,examples/bdna_curv/,traj.xyz,sim.log,dna_ecou

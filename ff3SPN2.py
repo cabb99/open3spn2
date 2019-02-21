@@ -1,27 +1,29 @@
+from typing import Type
+
 import simtk.openmm.app
 import simtk.openmm
-from simtk.unit import *
+import simtk.unit as unit
 import configparser
 import numpy as np
 import itertools
 
 """
 This tool has been constructed to simulate DNA using the 3SPN2 forcefield 
-in openmm
+in openmm.
 
 Author: Carlos Bueno
 """
 
-_ef = 1 * kilocalorie / kilojoule  # energy scaling factor
-_df = 1 * angstrom / nanometer  # distance scaling factor
-_af = 1 * degree / radian  # angle scaling factor
+_ef = 1 * unit.kilocalorie / unit.kilojoule  # energy scaling factor
+_df = 1 * unit.angstrom / unit.nanometer  # distance scaling factor
+_af = 1 * unit.degree / unit.radian  # angle scaling factor
 
 
 def parseConfigTable(config_section):
-    '''Parses a section of the configuration file as a table'''
+    """Parses a section of the configuration file as a table"""
 
     def readData(config_section, a):
-        '''Filters comments and returns values as a list'''
+        """Filters comments and returns values as a list"""
         temp = config_section.get(a).split('#')[0].split()
         l = []
         for val in temp:
@@ -48,7 +50,7 @@ def parseConfigTable(config_section):
     return pandas.DataFrame(data, columns=columns)
 
 
-## Errors
+# Errors
 class BaseError(Exception):
     pass
 
@@ -64,8 +66,9 @@ class DNATypeError(BaseError):
 
 class DNA(object):
     def __init__(self,periodic=True):
-        '''Initializes an empty DNA object'''
+        """Initializes an empty DNA object"""
         self.periodic = periodic
+
         pass
 
     def __repr__(self):
@@ -83,15 +86,15 @@ class DNA(object):
         self.pair_definition = parseConfigTable(config['Base Pairs'])
         self.cross_definition = parseConfigTable(config['Cross stackings'])
 
-    def computeTopology(self, DNAType='A'):
+    def computeTopology(self, DNAtype = 'A'):
         # Parse configuration file if not already done
         try:
             self.bond_definition
         except AttributeError:
             self.parseConfigurationFile()
 
-        self.DNAType = DNAType
-        if DNAType not in self.angle_definition['DNA'].unique():
+        self.DNAType = DNAtype
+        if DNAtype not in self.angle_definition['DNA'].unique():
             raise DNATypeError(self)
 
         # Make an index to build the topology
@@ -108,11 +111,11 @@ class DNA(object):
 
         # Select ADNA bond definitions
 
-        angle_types = self.angle_definition[self.angle_definition['DNA'] == DNAType]
-        if DNAType == 'B_curved':
-            DNAType = 'B'
-        bond_types = self.bond_definition[self.bond_definition['DNA'] == DNAType]
-        dihedral_types = self.dihedral_definition[self.dihedral_definition['DNA'] == DNAType]
+        angle_types = self.angle_definition[self.angle_definition['DNA'] == DNAtype]
+        if DNAtype == 'B_curved':
+            DNAtype = 'B'
+        bond_types = self.bond_definition[self.bond_definition['DNA'] == DNAtype]
+        dihedral_types = self.dihedral_definition[self.dihedral_definition['DNA'] == DNAtype]
 
         # Make a table with bonds
         data = []
@@ -169,7 +172,7 @@ class DNA(object):
         self.dihedrals = data.merge(dihedral_types, left_on='type', right_index=True)
 
     def writePDB(self, pdb_file='clean.pdb'):
-        ''' Writes a minimal version of the pdb file needed for openmm '''
+        """ Writes a minimal version of the pdb file needed for openmm """
         # Compute chain field
         chain_ix = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz'
         self.atoms['chainid'] = [chain_ix[i - 1] for i in self.atoms['chain']]
@@ -200,7 +203,7 @@ class DNA(object):
 
     @classmethod
     def fromPDB(cls, pdb_file):
-        '''Initializes a DNA object from a pdb file'''
+        """Initializes a DNA object from a pdb file"""
         # Parse the pdb
 
         # Make a clean pdb file
@@ -211,7 +214,7 @@ class DNA(object):
 
     @classmethod
     def fromGRO(cls, gro_file):
-        '''Initializes a DNA object from a gromacs input file'''
+        """Initializes a DNA object from a gromacs input file"""
         # Parse the gromacs file
 
         # Make a clean pdb file
@@ -222,7 +225,7 @@ class DNA(object):
 
     @classmethod
     def fromSequence(cls, sequence, center=[0, 0, 0]):
-        '''Initializes a DNA object from a DNA sequence'''
+        """Initializes a DNA object from a DNA sequence"""
         # Make a possible structure
 
         # Make a clean pdb file
@@ -233,7 +236,7 @@ class DNA(object):
 
     @classmethod
     def fromXYZ(cls, xyz_file):
-        '''Initializes DNA object from xyz file (as seen on the examples)'''
+        """Initializes DNA object from xyz file (as seen on the examples)"""
         # Parse the file
         self = cls()
         self.atoms = pandas.read_csv('examples/adna/in00_conf.xyz', delim_whitespace=True, skiprows=2,
@@ -262,7 +265,7 @@ class DNA(object):
 
 
 class System(simtk.openmm.System):
-    ''' Wrapper of openmm system class, adds some openmm simulation attributes'''
+    """ Wrapper of openmm system class, adds some openmm simulation attributes"""
 
     def __init__(self, mol, forcefieldFiles=['3SPN2.xml'], periodicBox=None):
         self.top = simtk.openmm.app.PDBFile(mol.pdb_file)
@@ -279,19 +282,23 @@ class System(simtk.openmm.System):
         return getattr(self._wrapped_system, attr)
 
     def clearForces(self, keepCMMotionRemover=True):
-        ''' Removes all the forces from the system '''
+        """ Removes all the forces from the system """
+        j=0
         for i, f in enumerate(self.getForces()):
             if keepCMMotionRemover and i == 0 and f.__class__ == simtk.openmm.CMMotionRemover:
+                # print('Kept ', f.__class__)
+                j+=1
                 continue
             else:
-                self.removeForce(0)
+                # print('Removed ', f.__class__)
+                self.removeForce(j)
         if keepCMMotionRemover == False:
             assert len(self.getForces()) == 0, 'Not all the forces were removed'
         else:
             assert len(self.getForces()) <= 1, 'Not all the forces were removed'
 
-    def initializeMD(self, temperature=300 * kelvin):
-        self.integrator = simtk.openmm.LangevinIntegrator(temperature, 1E-4/picosecond, 2*femtoseconds)
+    def initializeMD(self, temperature=300 * unit.kelvin):
+        self.integrator = simtk.openmm.LangevinIntegrator(temperature, 1E-4/unit.picosecond, 2*unit.femtoseconds)
         platform = simtk.openmm.Platform.getPlatformByName('Reference')
         self.simulation = simtk.openmm.app.Simulation(self.top.topology, self._wrapped_system, self.integrator,
                                                       platform)
@@ -311,7 +318,7 @@ class System(simtk.openmm.System):
         else:
             self.simulation.context.setPositions(coords)
 
-    def getPotentialEnergy(self, coords=None, unit=kilojoule_per_mole):
+    def getPotentialEnergy(self, coords=None, energy_unit=unit.kilojoule_per_mole):
         # Initialize trial MD if not setup
         try:
             self.simulation
@@ -319,7 +326,7 @@ class System(simtk.openmm.System):
             self.initializeMD()
         self.setPositions(coords)
         state = self.simulation.context.getState(getEnergy=True)
-        energy = state.getPotentialEnergy().value_in_unit(unit)
+        energy = state.getPotentialEnergy().value_in_unit(energy_unit)
         return energy
 
     def recomputeEnergy(self, trajectory):
@@ -341,7 +348,7 @@ class Force(object):
 
     def computeEnergy(self, system, trajectory):
         # Parse trajectory
-        traj = ff3SPN2.parse_xyz('examples/adna/traj.xyz')
+        traj = parse_xyz('examples/adna/traj.xyz')
 
         # clear all forces on the system
         system.clearForces()
@@ -356,7 +363,7 @@ class Force(object):
 
     def computeSingleEnergy(self, system, trajectory):
         # Parse trajectory
-        traj = ff3SPN2.parse_xyz('examples/adna/traj.xyz')
+        traj = parse_xyz('examples/adna/traj.xyz')
         # for each item of the table:
         # clear all forces on the system
         # system.clearForces()
@@ -369,11 +376,11 @@ class Force(object):
         # return a table with the energy
 
     def setUpInteraction(self,periodic):
-        ''' Creates a new force instance '''
+        """ Creates a new force instance """
         pass
 
     def defineInteraction(self, dna):
-        ''' Adds the parameter for the force '''
+        """ Adds the parameter for the force """
         pass
 
 
@@ -384,7 +391,7 @@ class Bond3SPN2(Force, simtk.openmm.CustomBondForce):
             return getattr(self, attr)
         return getattr(self.force, attr)
 
-    def getParameterNames():
+    def getParameterNames(self):
         self.perInteractionParameters = []
         self.GlobalParameters = []
         for i in range(self.force.getNumPerBondParameters()):
@@ -578,7 +585,7 @@ class BasePair3SPN2(Force,simtk.openmm.CustomHbondForce):
         interaction = np.zeros([32, 32]) + 1
         for i, D1 in enumerate(DD):
             for j, A1 in enumerate(AA):
-                print('Hi', ['A', 'G'][i], ['T', 'C'][j])
+                #print('Hi', ['A', 'G'][i], ['T', 'C'][j])
                 if i == j:  # Exclude same chain interactions
                     for k, chain in atoms.loc[D1 + A1].groupby('chain'):
                         di = list(chain.donor_id.dropna().astype(int))
@@ -710,7 +717,7 @@ class CrossStacking3SPN2(Force):
             d1t = complement[a1t]
             param = cross_definition.loc[[(d1t, a1t, a3t)]].squeeze()
             # print(param)
-            #print(a1, a2, a3)
+            # print(a1, a2, a3)
             parameters = [param['t03'] * _af,
                           param['T0CS_1'] * _af,
                           param['rng_cs1'],
@@ -787,20 +794,20 @@ class Electrostatics3SPN2(Force, simtk.openmm.CustomNonbondedForce):
         return getattr(self.force, attr)
 
     def reset(self, periodic=False):
-        T = 300 * kelvin
-        C = 100 * millimolar
-        e = 249.4 - 0.788 * (T / kelvin) + 7.2E-4 * (T / kelvin) ** 2
-        a = 1 - 0.2551 * (C / molar) + 5.151E-2 * (C / molar) ** 2 - 6.889E-3 * (C / molar) ** 3
+        T = 300 * unit.kelvin
+        C = 100 * unit.millimolar
+        e = 249.4 - 0.788 * (T / unit.kelvin) + 7.2E-4 * (T / unit.kelvin) ** 2
+        a = 1 - 0.2551 * (C / unit.molar) + 5.151E-2 * (C / unit.molar) ** 2 - 6.889E-3 * (C / unit.molar) ** 3
         print(e, a)
         dielectric = e * a
         # Debye length
         kb = simtk.unit.BOLTZMANN_CONSTANT_kB  # Bolztmann constant
         Na = simtk.unit.AVOGADRO_CONSTANT_NA  # Avogadro number
-        ec = 1.60217653E-19 * coulomb  # proton charge
-        pv = 8.8541878176E-12 * farad / meter  # dielectric permittivity of vacuum
+        ec = 1.60217653E-19 * unit.coulomb  # proton charge
+        pv = 8.8541878176E-12 * unit.farad / unit.meter  # dielectric permittivity of vacuum
 
-        ldby = sqrt(dielectric * pv * kb * T / (2.0 * Na * ec ** 2 * C))
-        ldby = ldby.in_units_of(nanometer)
+        ldby = np.sqrt(dielectric * pv * kb * T / (2.0 * Na * ec ** 2 * C))
+        ldby = ldby.in_units_of(unit.nanometer)
         denominator = 4 * np.pi * pv * dielectric / Na * ec ** 2
         print(ldby, denominator)
 
@@ -922,11 +929,19 @@ def test_parse_log():
     assert log_data.at[1, 'eexcl'] == 0.45734636
 
 
-class TestForces:
+class TestEnergies:
+    force3SPN2 = dict(Bond=Bond3SPN2,
+                      Angle=Angle3SPN2,
+                      Stacking=Stacking3SPN2,
+                      Dihedral=Dihedral3SPN2,
+                      BasePair=BasePair3SPN2,
+                      CrossStacking=CrossStacking3SPN2,
+                      Exclusion=Exclusion3SPN2,
+                      Electrostatics=Electrostatics3SPN2)
 
     @classmethod
-    def setup(cls, dna_type='A'):
-        cls.dna = DNA.fromXYZ('examples/adna/in00_conf.xyz')
+    def setup(cls, folder='examples/adna/', dna_type='A'):
+        cls.dna = DNA.fromXYZ(f'{folder}/in00_conf.xyz')
 
         cls.dna.parseConfigurationFile()
         cls.dna.computeTopology(dna_type)
@@ -938,23 +953,32 @@ class TestForces:
     def _test_energy(self,
                      log_energy='E_bond',
                      log_file='examples/adna/sim.log',
-                     traj='examples/adna/traj.xyz'):
+                     traj_file='examples/adna/traj.xyz',
+                     force='Bond'):
+        # print(log_energy, log_file, traj_file)
         log = parse_log(log_file)
 
         self.system.clearForces()
-        tempforce = Bond3SPN2(self.dna)
-        self.system.addForce(tempforce)
-        energies = self.system.recomputeEnergy(traj)
-        diff = ((energies / _ef - log[log_energy]) ** 2).sum()
-        print(f'Testing {log_energy} on DNA ', diff)
+        f = self.force3SPN2[force]
+        tempforce = f(self.dna)
+        if force == 'CrossStacking':
+            tempforce.addForce(self.system)
+        else:
+            self.system.addForce(tempforce)
+        energies = self.system.recomputeEnergy(traj_file)
+        diff = np.sqrt(((energies / _ef - log[log_energy]) ** 2).sum()/len(energies))
+        print(f'The difference in the energy term {log_energy} is {diff} Kcal/mol')
         assert diff < 1E-3, diff
 
     def test_energies(self):
-        pandas.read_csv
-        for i in range(10):
-            yield self._test_energy
-        for i in range(10):
-            yield self._test_energy
+        test_sets = pandas.read_csv('test_cases.csv')
+        for idx, tests in test_sets.groupby(['DNA type', 'Folder']):
+            dna_type = idx[0]
+            folder = idx[1]
+            self.setup(folder=folder, dna_type=dna_type)
+            for i, test in tests.iterrows():
+                yield self._test_energy, test['Energy term'], f'{test.Folder}/{test.Log}', f'{test.Folder}/{test.Trajectory}',test['Name']
+
 
 
 def test_Eangle_harmonic():
