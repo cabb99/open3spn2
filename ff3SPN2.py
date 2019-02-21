@@ -16,7 +16,7 @@ import itertools
 _ef = 1 * unit.kilocalorie / unit.kilojoule  # energy scaling factor
 _df = 1 * unit.angstrom / unit.nanometer  # distance scaling factor
 _af = 1 * unit.degree / unit.radian  # angle scaling factor
-
+_complement = {'A': 'T', 'T': 'A', 'G': 'C', 'C': 'G'}
 
 def parseConfigTable(config_section):
     """Parses a section of the configuration file as a table"""
@@ -686,19 +686,18 @@ class CrossStacking3SPN2(Force):
         A3 = dna.atoms.reindex(sel - 3)
 
         # Parameters
-        cross_definition = dna.cross_definition.copy()
+        cross_definition = dna.cross_definition[dna.cross_definition['DNA'] == dna.DNAtype].copy()
         i = [a for a in zip(cross_definition['Base_d1'], cross_definition['Base_a1'], cross_definition['Base_a3'])]
         cross_definition.index = i
 
         donors = {i: [] for i in ['A', 'T', 'G', 'C']}
-        complement = {'A': 'T', 'T': 'A', 'G': 'C', 'C': 'G'}
         for donator, donator2, d1, d2, d3 in zip(D1.itertuples(), D3.itertuples(), D1.index, D2.index, D3.index):
             # if d1!=4:
             #    continue
             d1t = donator.type
             d3t = donator2.type
             c1, c2 = self.crossStackingForces[d1t]
-            a1t = complement[d1t]
+            a1t = _complement[d1t]
             # print(d1, d2, d3)
             param = cross_definition.loc[[(a1t, d1t, d3t)]].squeeze()
             # parameters=[param1['t03']*af,param1['T0CS_1']*af,param1['rng_cs1'],param1['rng_bp'],param1['eps_cs1']*ef,param1['alpha_cs1']/df,param1['Sigma_1']*df]
@@ -720,8 +719,8 @@ class CrossStacking3SPN2(Force):
             #    continue
             a1t = aceptor.type
             a3t = aceptor2.type
-            c1, c2 = self.crossStackingForces[complement[a1t]]
-            d1t = complement[a1t]
+            c1, c2 = self.crossStackingForces[_complement[a1t]]
+            d1t = _complement[a1t]
             param = cross_definition.loc[[(d1t, a1t, a3t)]].squeeze()
             # print(param)
             # print(a1, a2, a3)
@@ -735,7 +734,7 @@ class CrossStacking3SPN2(Force):
             # parameters=[param1['t03']*af,param1['T0CS_2']*af,param1['rng_cs2'],param1['rng_bp'],param1['eps_cs2']*ef,param1['alpha_cs2']/df,param1['Sigma_2']*df]
             c1.addAcceptor(a1, a2, a3, parameters)
             c2.addDonor(a1, a2, a3)
-            aceptors[complement[a1t]] += [a1]
+            aceptors[_complement[a1t]] += [a1]
 
         # Exclusions
         for base in ['A', 'T', 'G', 'C']:
@@ -791,6 +790,9 @@ class Exclusion3SPN2(Force, simtk.openmm.CustomNonbondedForce):
                     continue
                 # Neighboring residues
                 if atom_a['chain'] == atom_b['chain'] and (atom_a.residue - atom_b.residue <= 1):
+                    self.force.addExclusion(i, j)
+                # Base-pair residues
+                elif (atom_a['type'] in _complement.keys()) and (atom_b['type'] in _complement.keys()) and (atom_a['type'] == _complement[atom_b['type']]):
                     self.force.addExclusion(i, j)
 
 
