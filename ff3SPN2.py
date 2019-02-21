@@ -768,7 +768,7 @@ class Exclusion3SPN2(Force, simtk.openmm.CustomNonbondedForce):
 
     def defineInteraction(self, dna):
         # addParticles
-        particle_definition = dna.particle_definition[dna.particle_definition['DNA'] == 'A']
+        particle_definition = dna.particle_definition[dna.particle_definition['DNA'] == dna.DNAtype]
         particle_definition.index = particle_definition.name
         self.force.setCutoffDistance(particle_definition.radius.max() * _df)
         for i, atom in dna.atoms.iterrows():
@@ -827,7 +827,7 @@ class Electrostatics3SPN2(Force, simtk.openmm.CustomNonbondedForce):
 
     def defineInteraction(self, dna):
         # addParticles
-        particle_definition = dna.particle_definition[dna.particle_definition['DNA'] == 'A']
+        particle_definition = dna.particle_definition[dna.particle_definition['DNA'] == dna.DNAtype]
         particle_definition.index = particle_definition.name
         for i, atom in dna.atoms.iterrows():
             param = particle_definition.loc[atom.type]
