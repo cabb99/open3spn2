@@ -65,7 +65,7 @@ class DNATypeError(BaseError):
 
 
 class DNA(object):
-    def __init__(self,periodic=True):
+    def __init__(self, periodic=True):
         """Initializes an empty DNA object"""
         self.periodic = periodic
 
@@ -86,14 +86,14 @@ class DNA(object):
         self.pair_definition = parseConfigTable(config['Base Pairs'])
         self.cross_definition = parseConfigTable(config['Cross stackings'])
 
-    def computeTopology(self, DNAtype = 'A'):
+    def computeTopology(self, DNAtype='A'):
         # Parse configuration file if not already done
         try:
             self.bond_definition
         except AttributeError:
             self.parseConfigurationFile()
 
-        self.DNAType = DNAtype
+        self.DNAtype = DNAtype
         if DNAtype not in self.angle_definition['DNA'].unique():
             raise DNATypeError(self)
 
@@ -283,11 +283,11 @@ class System(simtk.openmm.System):
 
     def clearForces(self, keepCMMotionRemover=True):
         """ Removes all the forces from the system """
-        j=0
+        j = 0
         for i, f in enumerate(self.getForces()):
             if keepCMMotionRemover and i == 0 and f.__class__ == simtk.openmm.CMMotionRemover:
                 # print('Kept ', f.__class__)
-                j+=1
+                j += 1
                 continue
             else:
                 # print('Removed ', f.__class__)
@@ -298,7 +298,7 @@ class System(simtk.openmm.System):
             assert len(self.getForces()) <= 1, 'Not all the forces were removed'
 
     def initializeMD(self, temperature=300 * unit.kelvin):
-        self.integrator = simtk.openmm.LangevinIntegrator(temperature, 1E-4/unit.picosecond, 2*unit.femtoseconds)
+        self.integrator = simtk.openmm.LangevinIntegrator(temperature, 1E-4 / unit.picosecond, 2 * unit.femtoseconds)
         platform = simtk.openmm.Platform.getPlatformByName('Reference')
         self.simulation = simtk.openmm.app.Simulation(self.top.topology, self._wrapped_system, self.integrator,
                                                       platform)
@@ -375,7 +375,7 @@ class Force(object):
 
         # return a table with the energy
 
-    def setUpInteraction(self,periodic):
+    def setUpInteraction(self, periodic):
         """ Creates a new force instance """
         pass
 
@@ -445,7 +445,7 @@ class Stacking3SPN2(Force, simtk.openmm.CustomCompoundBondForce):
             return getattr(self, attr)
         return getattr(self.force, attr)
 
-    def reset(self,periodic=False):
+    def reset(self, periodic=False):
         stackingForce = simtk.openmm.CustomCompoundBondForce(3, """rep+f2*attr;
                                                                 rep=epsilon*(1-exp(-alpha*(dr)))^2*step(-dr);
                                                                 attr=epsilon*(1-exp(-alpha*(dr)))^2*step(dr)-epsilon;
@@ -462,7 +462,7 @@ class Stacking3SPN2(Force, simtk.openmm.CustomCompoundBondForce):
         stackingForce.addPerBondParameter('alpha')
         stackingForce.addPerBondParameter('rng')
         stackingForce.addGlobalParameter('pi', np.pi)
-        self.force=stackingForce
+        self.force = stackingForce
 
     def defineInteraction(self, dna):
         for i, a in dna.angles.iterrows():
@@ -489,7 +489,7 @@ class Dihedral3SPN2(Force, simtk.openmm.CustomTorsionForce):
         dihedralForce.addPerTorsionParameter('t0')
         dihedralForce.addPerTorsionParameter('sigma')
         dihedralForce.addGlobalParameter('pi', np.pi)
-        self.force=dihedralForce
+        self.force = dihedralForce
 
     def defineInteraction(self, dna):
         for i, a in dna.dihedrals.iterrows():
@@ -499,7 +499,8 @@ class Dihedral3SPN2(Force, simtk.openmm.CustomTorsionForce):
             particles = [a['aai'], a['aaj'], a['aak'], a['aal']]
             self.force.addTorsion(*particles, parameters)
 
-class BasePair3SPN2(Force,simtk.openmm.CustomHbondForce):
+
+class BasePair3SPN2(Force, simtk.openmm.CustomHbondForce):
     def __getattr__(self, attr):
         if attr in self.__dict__:
             return getattr(self, attr)
@@ -535,7 +536,7 @@ class BasePair3SPN2(Force,simtk.openmm.CustomHbondForce):
         pairForce.addPerDonorParameter('epsilon')
         pairForce.addPerDonorParameter('alpha')
         pairForce.addGlobalParameter('pi', np.pi)
-        self.force=pairForce
+        self.force = pairForce
 
     def defineInteraction(self, dna):
         DD, AA = [], []
@@ -585,7 +586,7 @@ class BasePair3SPN2(Force,simtk.openmm.CustomHbondForce):
         interaction = np.zeros([32, 32]) + 1
         for i, D1 in enumerate(DD):
             for j, A1 in enumerate(AA):
-                #print('Hi', ['A', 'G'][i], ['T', 'C'][j])
+                # print('Hi', ['A', 'G'][i], ['T', 'C'][j])
                 if i == j:  # Exclude same chain interactions
                     for k, chain in atoms.loc[D1 + A1].groupby('chain'):
                         di = list(chain.donor_id.dropna().astype(int))
@@ -648,7 +649,7 @@ class CrossStacking3SPN2(Force):
         crossStackingForces = {}
         for base in ['A', 'T', 'G', 'C']:
             crossStackingForces.update({base: (crossStackingForce(), crossStackingForce())})
-        self.crossStackingForces=crossStackingForces
+        self.crossStackingForces = crossStackingForces
 
     def defineInteraction(self, dna):
         # Donators
@@ -692,7 +693,7 @@ class CrossStacking3SPN2(Force):
             d3t = donator2.type
             c1, c2 = self.crossStackingForces[d1t]
             a1t = complement[d1t]
-            #print(d1, d2, d3)
+            # print(d1, d2, d3)
             param = cross_definition.loc[[(a1t, d1t, d3t)]].squeeze()
             # parameters=[param1['t03']*af,param1['T0CS_1']*af,param1['rng_cs1'],param1['rng_bp'],param1['eps_cs1']*ef,param1['alpha_cs1']/df,param1['Sigma_1']*df]
             parameters = [param['t03'] * _af,
@@ -739,7 +740,7 @@ class CrossStacking3SPN2(Force):
                         c1.addExclusion(ii, jj)
                         c2.addExclusion(jj, ii)
 
-    def addForce(self,system):
+    def addForce(self, system):
         for c1, c2 in self.crossStackingForces.values():
             system.addForce(c1)
             system.addForce(c2)
@@ -763,7 +764,7 @@ class Exclusion3SPN2(Force, simtk.openmm.CustomNonbondedForce):
             exclusionForce.setNonbondedMethod(exclusionForce.CutoffPeriodic)
         else:
             exclusionForce.setNonbondedMethod(exclusionForce.CutoffNonPeriodic)
-        self.force=exclusionForce
+        self.force = exclusionForce
 
     def defineInteraction(self, dna):
         # addParticles
@@ -774,7 +775,7 @@ class Exclusion3SPN2(Force, simtk.openmm.CustomNonbondedForce):
             param = particle_definition.loc[atom.type]
             parameters = [param.epsilon * _ef,
                           param.radius * _df]
-            #print(i, parameters)
+            # print(i, parameters)
             self.force.addParticle(parameters)
 
         # addExclusions
@@ -822,7 +823,7 @@ class Electrostatics3SPN2(Force, simtk.openmm.CustomNonbondedForce):
             electrostaticForce.setNonbondedMethod(electrostaticForce.CutoffPeriodic)
         else:
             electrostaticForce.setNonbondedMethod(electrostaticForce.CutoffNonPeriodic)
-        self.force=electrostaticForce
+        self.force = electrostaticForce
 
     def defineInteraction(self, dna):
         # addParticles
@@ -939,22 +940,33 @@ class TestEnergies:
                       Exclusion=Exclusion3SPN2,
                       Electrostatics=Electrostatics3SPN2)
 
-    @classmethod
-    def setup(cls, folder='examples/adna/', dna_type='A'):
-        cls.dna = DNA.fromXYZ(f'{folder}/in00_conf.xyz')
-
-        cls.dna.parseConfigurationFile()
-        cls.dna.computeTopology(dna_type)
-        cls.dna.writePDB()
-        cls.system = System(cls.dna)
-        cls.system.clearForces()
-        cls.system.setDefaultPeriodicBoxVectors(*np.diag([2 * 9.4208000] * 3))
+    # @classmethod
+    # def setup(cls, folder='examples/adna/', dna_type='A'):
+    #     cls.dna = DNA.fromXYZ(f'{folder}/in00_conf.xyz')
+    #
+    #     cls.dna.parseConfigurationFile()
+    #     cls.dna.computeTopology(dna_type)
+    #     cls.dna.writePDB()
+    #     cls.system = System(cls.dna)
+    #     cls.system.clearForces()
+    #     cls.system.setDefaultPeriodicBoxVectors(*np.diag([2 * 9.4208000] * 3))
 
     def _test_energy(self,
                      log_energy='E_bond',
                      log_file='examples/adna/sim.log',
                      traj_file='examples/adna/traj.xyz',
-                     force='Bond'):
+                     force='Bond',
+                     folder='examples/adna/',
+                     dna_type='A'):
+        self.dna = DNA.fromXYZ(f'{folder}/in00_conf.xyz')
+
+        self.dna.parseConfigurationFile()
+        self.dna.computeTopology(dna_type)
+        self.dna.writePDB()
+        self.system = System(self.dna)
+        self.system.clearForces()
+        self.system.setDefaultPeriodicBoxVectors(*np.diag([2 * 9.4208000] * 3))
+
         # print(log_energy, log_file, traj_file)
         log = parse_log(log_file)
 
@@ -966,8 +978,9 @@ class TestEnergies:
         else:
             self.system.addForce(tempforce)
         energies = self.system.recomputeEnergy(traj_file)
-        diff = np.sqrt(((energies / _ef - log[log_energy]) ** 2).sum()/len(energies))
+        diff = np.sqrt(((energies / _ef - log[log_energy]) ** 2).sum() / len(energies))
         print(f'The difference in the energy term {log_energy} is {diff} Kcal/mol')
+        print(f'The DNA type of the system is {self.dna.DNAtype}')
         assert diff < 1E-3, diff
 
     def test_energies(self):
@@ -975,10 +988,10 @@ class TestEnergies:
         for idx, tests in test_sets.groupby(['DNA type', 'Folder']):
             dna_type = idx[0]
             folder = idx[1]
-            self.setup(folder=folder, dna_type=dna_type)
+            # self.setup(folder=folder, dna_type=dna_type)
             for i, test in tests.iterrows():
-                yield self._test_energy, test['Energy term'], f'{test.Folder}/{test.Log}', f'{test.Folder}/{test.Trajectory}',test['Name']
-
+                yield self._test_energy, test['Energy term'], f'{folder}/{test.Log}', f'{folder}/{test.Trajectory}', \
+                      test['Name'], folder, dna_type
 
 
 def test_Eangle_harmonic():
