@@ -43,7 +43,7 @@ pair_coeff  12  12  3spn2   0.239006    7.100000
 pair_coeff  13  13  3spn2   0.239006    4.900000
 pair_coeff  14  14  3spn2   0.239006    6.400000
 pair_modify mix arithmetic
-pair_coeff 1*18 15*18 none # Zeroing out other interactions
+pair_coeff 1*17 15*17 none # Zeroing out other interactions
 
 # Specify parameters for the neighbor list
 neighbor	4.0 multi
