@@ -1,4 +1,9 @@
-from typing import Type
+#!/usr/bin/python3
+"""
+DNA simulation using the 3SPN2 and 3SPN2.C forcefields in openmm.
+"""
+__author__ = 'Carlos Bueno'
+__version__ = '0.1'
 
 import simtk.openmm.app
 import simtk.openmm
@@ -7,12 +12,6 @@ import configparser
 import numpy as np
 import itertools
 
-"""
-This tool has been constructed to simulate DNA using the 3SPN2 forcefield 
-in openmm.
-
-Author: Carlos Bueno
-"""
 
 _ef = 1 * unit.kilocalorie / unit.kilojoule  # energy scaling factor
 _df = 1 * unit.angstrom / unit.nanometer  # distance scaling factor
@@ -76,6 +75,7 @@ class DNA(object):
         # print the sequence and the identity of the DNA object
 
     def parseConfigurationFile(self, configuration_file='3SPN2.conf'):
+        """Reads the configuration file for the forcefield"""
         self.configuration_file = configuration_file
         config = configparser.ConfigParser()
         config.read(configuration_file)
@@ -87,6 +87,7 @@ class DNA(object):
         self.cross_definition = parseConfigTable(config['Cross stackings'])
 
     def computeTopology(self, DNAtype='A'):
+        """Creates tables of bonds, angles and dihedrals with their respective parameters (bonded interactions)"""
         # Parse configuration file if not already done
         try:
             self.bond_definition
@@ -298,6 +299,7 @@ class System(simtk.openmm.System):
             assert len(self.getForces()) <= 1, 'Not all the forces were removed'
 
     def initializeMD(self, temperature=300 * unit.kelvin):
+        """Starts a sample simulation using the selected system"""
         self.integrator = simtk.openmm.LangevinIntegrator(temperature, 1E-4 / unit.picosecond, 2 * unit.femtoseconds)
         platform = simtk.openmm.Platform.getPlatformByName('Reference')
         self.simulation = simtk.openmm.app.Simulation(self.top.topology, self._wrapped_system, self.integrator,
@@ -306,6 +308,7 @@ class System(simtk.openmm.System):
         return self.simulation
 
     def setPositions(self, coords=None):
+        """Sets the particle positions in the simulation"""
         # Initialize trial MD if not setup
         try:
             self.simulation
@@ -319,6 +322,7 @@ class System(simtk.openmm.System):
             self.simulation.context.setPositions(coords)
 
     def getPotentialEnergy(self, coords=None, energy_unit=unit.kilojoule_per_mole):
+        """Returns the potential energy of the current state of the system (default unit KJ/mol)"""
         # Initialize trial MD if not setup
         try:
             self.simulation
@@ -330,6 +334,7 @@ class System(simtk.openmm.System):
         return energy
 
     def recomputeEnergy(self, trajectory):
+        """Returns the potential energy of each snapshot in a trajectory"""
         traj = parse_xyz(trajectory)
         self.initializeMD()
         energies = []
@@ -540,7 +545,8 @@ class BasePair3SPN2(Force, simtk.openmm.CustomHbondForce):
 
     def defineInteraction(self, dna):
         DD, AA = [], []
-        for i, pair in dna.pair_definition.iterrows():
+        pair_definition = dna.pair_definition[dna.pair_definition['DNA'] == dna.DNAtype]
+        for i, pair in pair_definition.iterrows():
             D1 = list(dna.atoms[dna.atoms['type'] == pair['Base1']].index)
             A1 = list(dna.atoms[dna.atoms['type'] == pair['Base2']].index)
             # D1=[1]
@@ -859,6 +865,7 @@ def test_DNA_from_seq():
 
 
 def test_DNA_from_xyz():
+    """Tests the correct parsing from an xyz file"""
     mol = DNA.fromXYZ('examples/adna/in00_conf.xyz')
     assert mol.atoms.at[8, 'type'] == 'P'
     assert round(mol.atoms.at[188, 'y'], 6) == -8.779343
@@ -919,18 +926,21 @@ def parse_log(filename=''):
 
 
 def test_parse_xyz():
+    """Tests the example trajectory parsing"""
     xyz_data = parse_xyz('examples/adna/traj.xyz')
     assert xyz_data.at[1, 'type'] == 7
     assert xyz_data.at[1, 'x'] == 4.34621
 
 
 def test_parse_log():
+    """Tests the example log parsing"""
     log_data = parse_log('examples/adna/sim.log')
     assert log_data.at[1, 'Step'] == 2000
     assert log_data.at[1, 'eexcl'] == 0.45734636
 
 
 class TestEnergies:
+    """Tests that the energies are the same as the example outputs from lammps"""
     force3SPN2 = dict(Bond=Bond3SPN2,
                       Angle=Angle3SPN2,
                       Stacking=Stacking3SPN2,
@@ -992,27 +1002,3 @@ class TestEnergies:
             for i, test in tests.iterrows():
                 yield self._test_energy, test['Energy term'], f'{folder}/{test.Log}', f'{folder}/{test.Trajectory}', \
                       test['Name'], folder, dna_type
-
-
-def test_Eangle_harmonic():
-    pass
-
-
-def test_Eangle_stacking():
-    pass
-
-
-def test_Edihedral():
-    pass
-
-
-def test_Ebp():
-    pass
-
-
-def test_Ecstk():
-    pass
-
-
-def test_Eelectro():
-    pass
