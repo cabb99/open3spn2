@@ -12,8 +12,8 @@ import configparser
 import numpy as np
 import itertools
 import scipy.spatial.distance as sdist
-
-
+import os
+__location__ = os.path.realpath(os.path.join(os.getcwd(), os.path.dirname(__file__)))
 _ef = 1 * unit.kilocalorie / unit.kilojoule  # energy scaling factor
 _df = 1 * unit.angstrom / unit.nanometer  # distance scaling factor
 _af = 1 * unit.degree / unit.radian  # angle scaling factor
@@ -66,16 +66,14 @@ class DNATypeError(BaseError):
 
 class DNA(object):
     def __init__(self, periodic=True):
-        """Initializes an empty DNA object"""
+        """Initializes an DNA object"""
         self.periodic = periodic
-
-        pass
 
     def __repr__(self):
         return f'DNA object'
         # print the sequence and the identity of the DNA object
 
-    def parseConfigurationFile(self, configuration_file='3SPN2.conf'):
+    def parseConfigurationFile(self, configuration_file=f'{__location__}/3SPN2.conf'):
         """Reads the configuration file for the forcefield"""
         self.configuration_file = configuration_file
         config = configparser.ConfigParser()
@@ -88,7 +86,7 @@ class DNA(object):
         self.pair_definition = parseConfigTable(config['Base Pairs'])
         self.cross_definition = parseConfigTable(config['Cross Stackings'])
 
-    def computeTopology(self, DNAtype='A'):
+    def computeTopology(self):
         """Creates tables of bonds, angles and dihedrals with their respective parameters (bonded interactions)"""
         # Parse configuration file if not already done
         try:
@@ -96,7 +94,7 @@ class DNA(object):
         except AttributeError:
             self.parseConfigurationFile()
 
-        self.DNAtype = DNAtype
+        DNAtype = self.DNAtype
         if DNAtype not in self.angle_definition['DNA'].unique():
             raise DNATypeError(self)
 
@@ -297,7 +295,7 @@ class DNA(object):
         pass
 
     @classmethod
-    def fromXYZ(cls, xyz_file):
+    def fromXYZ(cls, xyz_file, dnatype = 'B_curved'):
         """Initializes DNA object from xyz file (as seen on the examples)"""
         # Parse the file
         self = cls()
@@ -336,16 +334,20 @@ class DNA(object):
                 resname += 'f'
             res_ix.update({(res['chain'], res['residue']): resname})
         self.atoms['resname'] = [res_ix[(r['chain'], r['residue'])] for i, r in self.atoms.iterrows()]
-
+        self.DNAtype = dnatype
+        self.parseConfigurationFile()
+        self.computeTopology()
+        self.writePDB()
         return self
 
 
 class System(simtk.openmm.System):
     """ Wrapper of openmm system class, adds some openmm simulation attributes"""
 
-    def __init__(self, mol, forcefieldFiles=['3SPN2.xml'], periodicBox=None):
-        self.top = simtk.openmm.app.PDBFile(mol.pdb_file)
-        self.coord = simtk.openmm.app.PDBFile(mol.pdb_file)
+    def __init__(self, dna, forcefieldFiles = [f'{__location__}/3SPN2.xml'], periodicBox=None):
+        self.dna = dna
+        self.top = simtk.openmm.app.PDBFile(dna.pdb_file)
+        self.coord = simtk.openmm.app.PDBFile(dna.pdb_file)
         self.forcefield = simtk.openmm.app.ForceField(*forcefieldFiles)
         self._wrapped_system = self.forcefield.createSystem(self.top.topology)
         self.periodicBox = periodicBox
@@ -372,6 +374,25 @@ class System(simtk.openmm.System):
             assert len(self.getForces()) == 0, 'Not all the forces were removed'
         else:
             assert len(self.getForces()) <= 1, 'Not all the forces were removed'
+
+    def add3SPN2forces(self):
+        forces = dict(Bond=Bond3SPN2,
+                      Angle=Angle3SPN2,
+                      Stacking=Stacking3SPN2,
+                      Dihedral=Dihedral3SPN2,
+                      BasePair=BasePair3SPN2,
+                      CrossStacking=CrossStacking3SPN2,
+                      Exclusion=Exclusion3SPN2,
+                      Electrostatics=Electrostatics3SPN2)
+        for force_name in forces:
+
+            force = forces[force_name](self.dna)
+            if force_name == 'CrossStacking':
+                force.addForce(self)
+            else:
+                self.addForce(force)
+
+
 
     def initializeMD(self, temperature=300 * unit.kelvin):
         """Starts a sample simulation using the selected system"""
@@ -1054,11 +1075,11 @@ class TestEnergies:
                      force='Bond',
                      folder='examples/adna/',
                      dna_type='A',periodic_size=94.2):
-        self.dna = DNA.fromXYZ(f'{folder}/in00_conf.xyz')
+        self.dna = DNA.fromXYZ(f'{folder}/in00_conf.xyz', dna_type)
 
-        self.dna.parseConfigurationFile()
-        self.dna.computeTopology(dna_type)
-        self.dna.writePDB()
+        #self.dna.parseConfigurationFile()
+        #self.dna.computeTopology()
+        #self.dna.writePDB()
         self.system = System(self.dna)
         self.system.clearForces()
         self.system.setDefaultPeriodicBoxVectors(*np.diag([2 * periodic_size/10] * 3))
