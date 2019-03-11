@@ -394,10 +394,10 @@ class System(simtk.openmm.System):
 
 
 
-    def initializeMD(self, temperature=300 * unit.kelvin):
+    def initializeMD(self, temperature=300 * unit.kelvin, platform_name='Reference'):
         """Starts a sample simulation using the selected system"""
         self.integrator = simtk.openmm.LangevinIntegrator(temperature, 1E-4 / unit.picosecond, 2 * unit.femtoseconds)
-        platform = simtk.openmm.Platform.getPlatformByName('Reference')
+        platform = simtk.openmm.Platform.getPlatformByName(platform_name)
         self.simulation = simtk.openmm.app.Simulation(self.top.topology, self._wrapped_system, self.integrator,
                                                       platform)
         self.simulation.context.setPositions(self.coord.positions)
@@ -429,10 +429,10 @@ class System(simtk.openmm.System):
         energy = state.getPotentialEnergy().value_in_unit(energy_unit)
         return energy
 
-    def recomputeEnergy(self, trajectory):
+    def recomputeEnergy(self, trajectory,platform_name='Reference'):
         """Returns the potential energy of each snapshot in a trajectory"""
         traj = parse_xyz(trajectory)
-        self.initializeMD()
+        self.initializeMD(platform_name=platform_name)
         energies = []
         for time, snapshot in traj.groupby('timestep'):
             energy = self.getPotentialEnergy(np.array(snapshot[['x', 'y', 'z']]) * _df)
@@ -1074,7 +1074,8 @@ class TestEnergies:
                      traj_file='examples/adna/traj.xyz',
                      force='Bond',
                      folder='examples/adna/',
-                     dna_type='A',periodic_size=94.2):
+                     dna_type='A',periodic_size=94.2,
+                     platform_name='Reference'):
         self.dna = DNA.fromXYZ(f'{folder}/in00_conf.xyz', dna_type)
 
         #self.dna.parseConfigurationFile()
@@ -1094,7 +1095,7 @@ class TestEnergies:
             tempforce.addForce(self.system)
         else:
             self.system.addForce(tempforce)
-        energies = self.system.recomputeEnergy(traj_file)
+        energies = self.system.recomputeEnergy(traj_file, platform_name=platform_name)
         d = (energies / _ef - log[log_energy])
         diff = np.sqrt((d**2).sum() / len(energies))
         print(f'The difference in the energy term {log_energy} is {diff} Kcal/mol')
@@ -1109,10 +1110,12 @@ class TestEnergies:
 
     def test_energies(self):
         test_sets = pandas.read_csv('test_cases.csv', comment='#')
-        for idx, tests in test_sets.groupby(['DNA type', 'Folder']):
-            dna_type = idx[0]
-            folder = idx[1]
+        #for idx, tests in test_sets.groupby(['DNA type', 'Folder']):
+        #    dna_type = idx[0]
+        #    folder = idx[1]
             # self.setup(folder=folder, dna_type=dna_type)
-            for i, test in tests.iterrows():
-                yield self._test_energy, test['Energy term'], f'{folder}/{test.Log}', f'{folder}/{test.Trajectory}', \
-                      test['Name'], folder, dna_type, test['periodic size']
+        for i, test in test_sets.iterrows():
+            dna_type = test['DNA type']
+            folder = test['Folder']
+            yield self._test_energy, test['Energy term'], f'{folder}/{test.Log}', f'{folder}/{test.Trajectory}', \
+                  test['Name'], folder, dna_type, test['periodic size'], test['Platform']

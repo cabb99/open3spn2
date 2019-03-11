@@ -1,28 +1,36 @@
-Name,DNA type,Folder,Trajectory,Log,Energy term,periodic size
-Bond,A,examples/adna/,traj.xyz,sim.log,E_bond,94.208
-Angle,A,examples/adna/,traj.xyz,sim_harmonic.log,E_angle,94.208
-Stacking,A,examples/adna/,traj.xyz,sim_stacking.log,E_angle,94.208
-Dihedral,A,examples/adna/,traj.xyz,sim.log,E_dihed,94.208
-BasePair,A,examples/adna/,traj.xyz,sim.log,ebp,94.208
-CrossStacking,A,examples/adna/,traj.xyz,sim.log,ecstk,94.208
-Exclusion,A,examples/adna/,traj.xyz,sim.log,eexcl,94.208
-Electrostatics,A,examples/adna/,traj.xyz,sim.log,dna_ecou,94.208
-Bond,B,examples/bdna/,traj.xyz,sim.log,E_bond,124.384
-Angle,B,examples/bdna/,traj.xyz,sim_harmonic.log,E_angle,124.384
-Stacking,B,examples/bdna/,traj.xyz,sim_stacking.log,E_angle,124.384
-Dihedral,B,examples/bdna/,traj.xyz,sim.log,E_dihed,124.384
-BasePair,B,examples/bdna/,traj.xyz,sim.log,ebp,124.384
-CrossStacking,B,examples/bdna/,traj.xyz,sim.log,ecstk,124.384
-Exclusion,B,examples/bdna/,traj.xyz,sim.log,eexcl,124.384
-Electrostatics,B,examples/bdna/,traj.xyz,sim.log,dna_ecou,124.384
-Bond,B_curved,examples/bdna_curv/,traj.xyz,sim.log,E_bond,150.54
-Angle,B_curved,examples/bdna_curv/,traj.xyz,sim_harmonic.log,E_angle,150.54
-Stacking,B_curved,examples/bdna_curv/,traj.xyz,sim_stacking.log,E_angle,150.54
-Dihedral,B_curved,examples/bdna_curv/,traj.xyz,sim.log,E_dihed,150.54
-BasePair,B_curved,examples/bdna_curv/,traj.xyz,sim_stacking.log,ebp,150.54
-CrossStacking,B_curved,examples/bdna_curv/,traj.xyz,sim_stacking.log,ecstk,150.54
-Exclusion,B_curved,examples/bdna_curv/,traj.xyz,sim.log,eexcl,150.54
-Electrostatics,B_curved,examples/bdna_curv/,traj.xyz,sim.log,dna_ecou,150.54
-#BasePair,B_curved,examples/bdna_curv1/,traj.xyz,sim.log,ebp,513.084000
-#CrossStacking,B_curved,examples/bdna_curv1/,traj.xyz,sim.log,ecstk,513.084000
+Name,DNA type,Folder,Trajectory,Log,Energy term,periodic size,Platform
+#OpenCL
+BasePair,B_curved,examples/bdna_curv/,traj.xyz,sim_stacking.log,ebp,150.54,OpenCL
+CrossStacking,B_curved,examples/bdna_curv/,traj.xyz,sim_stacking.log,ecstk,150.54,OpenCL
+#A DNA
+Bond,A,examples/adna/,traj.xyz,sim.log,E_bond,94.208,Reference
+Angle,A,examples/adna/,traj.xyz,sim_harmonic.log,E_angle,94.208,Reference
+Stacking,A,examples/adna/,traj.xyz,sim_stacking.log,E_angle,94.208,Reference
+Dihedral,A,examples/adna/,traj.xyz,sim.log,E_dihed,94.208,Reference
+BasePair,A,examples/adna/,traj.xyz,sim.log,ebp,94.208,Reference
+CrossStacking,A,examples/adna/,traj.xyz,sim.log,ecstk,94.208,Reference
+Exclusion,A,examples/adna/,traj.xyz,sim.log,eexcl,94.208,Reference
+Electrostatics,A,examples/adna/,traj.xyz,sim.log,dna_ecou,94.208,Reference
+#B DNA
+Bond,B,examples/bdna/,traj.xyz,sim.log,E_bond,124.384,Reference
+Angle,B,examples/bdna/,traj.xyz,sim_harmonic.log,E_angle,124.384,Reference
+Stacking,B,examples/bdna/,traj.xyz,sim_stacking.log,E_angle,124.384,Reference
+Dihedral,B,examples/bdna/,traj.xyz,sim.log,E_dihed,124.384,Reference
+BasePair,B,examples/bdna/,traj.xyz,sim.log,ebp,124.384,Reference
+CrossStacking,B,examples/bdna/,traj.xyz,sim.log,ecstk,124.384,Reference
+Exclusion,B,examples/bdna/,traj.xyz,sim.log,eexcl,124.384,Reference
+Electrostatics,B,examples/bdna/,traj.xyz,sim.log,dna_ecou,124.384,Reference
+#B-curved DNA
+Bond,B_curved,examples/bdna_curv/,traj.xyz,sim.log,E_bond,150.54,Reference
+Angle,B_curved,examples/bdna_curv/,traj.xyz,sim_harmonic.log,E_angle,150.54,Reference
+Stacking,B_curved,examples/bdna_curv/,traj.xyz,sim_stacking.log,E_angle,150.54,Reference
+Dihedral,B_curved,examples/bdna_curv/,traj.xyz,sim.log,E_dihed,150.54,Reference
+BasePair,B_curved,examples/bdna_curv/,traj.xyz,sim_stacking.log,ebp,150.54,Reference
+CrossStacking,B_curved,examples/bdna_curv/,traj.xyz,sim_stacking.log,ecstk,150.54,Reference
+Exclusion,B_curved,examples/bdna_curv/,traj.xyz,sim.log,eexcl,150.54,Reference
+Electrostatics,B_curved,examples/bdna_curv/,traj.xyz,sim.log,dna_ecou,150.54,Reference
+
+
+#BasePair,B_curved,examples/bdna_curv1/,traj.xyz,sim.log,ebp,513.084000,Reference
+#CrossStacking,B_curved,examples/bdna_curv1/,traj.xyz,sim.log,ecstk,513.084000,Reference
 
