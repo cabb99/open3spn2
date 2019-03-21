@@ -1,4 +1,4 @@
-# USER-3SPN2
+# Open-3SPN2
 Coarse-grained molecular model of DNA (for OpenMM)
 
 3SPN.2 is a highly-robust coarse-grained DNA model that is capable of studying processes
