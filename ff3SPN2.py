@@ -328,10 +328,10 @@ class DNA(object):
         max_res = self.atoms.groupby('chain')['residue'].max()
         for i, res in self.atoms[~self.atoms['type'].isin(['S', 'P'])].iterrows():
             resname = 'D' + res['type']
-            if res['residue'] == min_res[res['chain']]:
-                resname += 'i'
-            if res['residue'] == max_res[res['chain']]:
-                resname += 'f'
+            #if res['residue'] == min_res[res['chain']]:
+            #    resname += 'i'
+            #if res['residue'] == max_res[res['chain']]:
+            #    resname += 'f'
             res_ix.update({(res['chain'], res['residue']): resname})
         self.atoms['resname'] = [res_ix[(r['chain'], r['residue'])] for i, r in self.atoms.iterrows()]
         self.DNAtype = dnatype

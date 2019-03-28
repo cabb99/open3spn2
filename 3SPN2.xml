@@ -14,67 +14,33 @@
   </AtomTypes>
   <Residues>
     <Residue name="DA">
+        <AllowPatch name="Initial"/>
         <Atom name="P"  type="P"/>
         <Atom name="S"  type="S"/>
         <Atom name="A"  type="A"/>
     </Residue>
     <Residue name="DC">
+        <AllowPatch name="Initial"/>
         <Atom name="P"  type="P"/>
         <Atom name="S"  type="S"/>
         <Atom name="C"  type="C"/>    
     </Residue>
     <Residue name="DT">
+        <AllowPatch name="Initial"/>
         <Atom name="P"  type="P"/>
         <Atom name="S"  type="S"/>
         <Atom name="T"  type="T"/>
     </Residue>
     <Residue name="DG">
+        <AllowPatch name="Initial"/>
         <Atom name="P"  type="P"/>
         <Atom name="S"  type="S"/>
         <Atom name="G"  type="G"/>
     </Residue>
-    <!-- Initial residues -->
-    <Residue name="DAI">
-        <Atom name="S"  type="S"/>
-        <Atom name="A"  type="A"/>
-    </Residue>
-    <Residue name="DCi">
-        <Atom name="S"  type="S"/>
-        <Atom name="C"  type="C"/>    
-    </Residue>
-    <Residue name="DTi">
-        <Atom name="S"  type="S"/>
-        <Atom name="T"  type="T"/>
-    </Residue>
-    <Residue name="DGi">
-        <Atom name="S"  type="S"/>
-        <Atom name="G"  type="G"/>
-    </Residue>
-    <!-- Final residues residues -->
-    <!--<Residue name="DAf">
-        <Atom name="P"  type="P"/>
-        <Atom name="S"  type="S"/>
-        <Atom name="A"  type="A"/>
-    </Residue>
-    <Residue name="DCf">
-        <Atom name="P"  type="P"/>
-        <Atom name="S"  type="S"/>
-        <Atom name="C"  type="C"/>    
-    </Residue>
-    <Residue name="DTf">
-        <Atom name="P"  type="P"/>
-        <Atom name="S"  type="S"/>
-        <Atom name="T"  type="T"/>
-    </Residue>
-    <Residue name="DGf">
-        <Atom name="P"  type="P"/>
-        <Atom name="S"  type="S"/>
-        <Atom name="G"  type="G"/>
-    </Residue>-->
   </Residues>
   <Patches>
-    <Patch name="AT">
-      <RemoveAtom name="A5"/>
-    </Patch>
+      <Patch name="Initial">
+          <RemoveAtom name="P"/>
+      </Patch>
   </Patches>
 </ForceField>
