@@ -3,10 +3,10 @@
     <!-- DNA particles -->
     <Type name="P" class="Phosphate" element="P" mass="94.9696"/>
     <Type name="S" class="Sugar" element="H" mass="83.1104"/>
-    <Type name="A" class="Base" element="N" mass="134.1220"/>
-    <Type name="T" class="Base" element="S" mass="125.1078"/>
-    <Type name="G" class="Base" element="C" mass="150.1214"/>
-    <Type name="C" class="Base" element="O" mass="110.0964"/>
+    <Type name="A base" class="Base" element="N" mass="134.1220"/>
+    <Type name="T base" class="Base" element="S" mass="125.1078"/>
+    <Type name="G base" class="Base" element="C" mass="150.1214"/>
+    <Type name="C base" class="Base" element="O" mass="110.0964"/>
     <!-- Ion particles -->
     <Type name="Na" class="Ion" element="Mg" mass="0"/>
     <Type name="Mg" class="Ion" element="Fe" mass="0"/>
@@ -17,25 +17,25 @@
         <AllowPatch name="Initial"/>
         <Atom name="P"  type="P"/>
         <Atom name="S"  type="S"/>
-        <Atom name="A"  type="A"/>
+        <Atom name="A"  type="A base"/>
     </Residue>
     <Residue name="DC">
         <AllowPatch name="Initial"/>
         <Atom name="P"  type="P"/>
         <Atom name="S"  type="S"/>
-        <Atom name="C"  type="C"/>    
+        <Atom name="C"  type="C base"/>
     </Residue>
     <Residue name="DT">
         <AllowPatch name="Initial"/>
         <Atom name="P"  type="P"/>
         <Atom name="S"  type="S"/>
-        <Atom name="T"  type="T"/>
+        <Atom name="T"  type="T base"/>
     </Residue>
     <Residue name="DG">
         <AllowPatch name="Initial"/>
         <Atom name="P"  type="P"/>
         <Atom name="S"  type="S"/>
-        <Atom name="G"  type="G"/>
+        <Atom name="G"  type="G base"/>
     </Residue>
   </Residues>
   <Patches>
