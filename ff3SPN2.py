@@ -5,6 +5,8 @@ DNA simulation using the 3SPN2 and 3SPN2.C forcefields in openmm.
 # TODO Curved BDNA is currently using the original pdb template, it should use X3DNA if possible,
 #  so I need to make it able to take parameters from another pdb if necessary
 
+# TODO put tests in their own folder
+
 __author__ = 'Carlos Bueno'
 __version__ = '0.2'
 
@@ -550,6 +552,7 @@ class Bond3SPN2(Force, simtk.openmm.CustomBondForce):
         bondForce.addPerBondParameter('Kb3')
         bondForce.addPerBondParameter('Kb4')
         bondForce.setUsesPeriodicBoundaryConditions(periodic)
+        bondForce.setForceGroup(3)
         self.force = bondForce
 
     def defineInteraction(self, dna):
@@ -572,6 +575,7 @@ class Angle3SPN2(Force, simtk.openmm.HarmonicAngleForce):
     def reset(self, dna, periodic=False):
         angleForce = simtk.openmm.HarmonicAngleForce()
         angleForce.setUsesPeriodicBoundaryConditions(periodic)
+        angleForce.setForceGroup(4)
         self.force = angleForce
 
     def defineInteraction(self, dna):
@@ -604,6 +608,7 @@ class Stacking3SPN2(Force, simtk.openmm.CustomCompoundBondForce):
         stackingForce.addPerBondParameter('alpha')
         stackingForce.addPerBondParameter('rng')
         stackingForce.addGlobalParameter('pi', np.pi)
+        stackingForce.setForceGroup(5)
         self.force = stackingForce
 
     def defineInteraction(self, dna):
@@ -633,6 +638,7 @@ class Dihedral3SPN2(Force, simtk.openmm.CustomTorsionForce):
         dihedralForce.addPerTorsionParameter('sigma')
         dihedralForce.addPerTorsionParameter('t0')
         dihedralForce.addGlobalParameter('pi', np.pi)
+        dihedralForce.setForceGroup(6)
         self.force = dihedralForce
 
     def defineInteraction(self, dna):
@@ -682,6 +688,7 @@ class BasePair3SPN2(Force, simtk.openmm.CustomHbondForce):
             pairForce.addPerDonorParameter('alpha')
             pairForce.addGlobalParameter('pi', np.pi)
             self.force = pairForce
+            pairForce.setForceGroup(7)
             return pairForce
 
         basePairForces = {}
@@ -791,6 +798,7 @@ class CrossStacking3SPN2(Force):
                 else:
                     crossForce.addPerAcceptorParameter(p)
             crossForce.addGlobalParameter('pi', np.pi)
+            crossForce.setForceGroup(8)
             return crossForce
 
         crossStackingForces = {}
@@ -903,6 +911,23 @@ class CrossStacking3SPN2(Force):
             system.addForce(c2)
 
 
+def addNonBondedExclusions(dna,force):
+    is_dna = dna.atoms['resname'].isin(_dnaResidues)
+    atoms = dna.atoms.copy()
+    selection = atoms[is_dna]
+    for (i, atom_a), (j, atom_b) in itertools.product(selection.iterrows(), repeat=2):
+        if j >= i:
+            continue
+        # Neighboring residues
+        if atom_a['chain'] == atom_b['chain'] and (atom_a.residue - atom_b.residue <= 1):
+            force.addExclusion(i, j)
+            print(i,j)
+        # Base-pair residues
+        elif (atom_a['type'] in _complement.keys()) and (atom_b['type'] in _complement.keys()) and (
+                atom_a['type'] == _complement[atom_b['type']]):
+            force.addExclusion(i, j)
+            print(i, j)
+
 class Exclusion3SPN2(Force, simtk.openmm.CustomNonbondedForce):
     def __getattr__(self, attr):
         if attr in self.__dict__:
@@ -917,7 +942,7 @@ class Exclusion3SPN2(Force, simtk.openmm.CustomNonbondedForce):
         exclusionForce.addPerParticleParameter('epsilon')
         exclusionForce.addPerParticleParameter('sigma')
         exclusionForce.setCutoffDistance(1.8)
-        exclusionForce.setForceGroup(1) # There can not be multiple cutoff distance on the same force group
+        exclusionForce.setForceGroup(9) # There can not be multiple cutoff distance on the same force group
         if periodic:
             exclusionForce.setNonbondedMethod(exclusionForce.CutoffPeriodic)
         else:
@@ -947,7 +972,7 @@ class Exclusion3SPN2(Force, simtk.openmm.CustomNonbondedForce):
         # addExclusions
         selection = atoms[is_dna]
         for (i, atom_a),(j, atom_b) in itertools.product(selection.iterrows(), repeat=2):
-            if j > i:
+            if j >= i:
                 continue
             # Neighboring residues
             if atom_a['chain'] == atom_b['chain'] and (atom_a.residue - atom_b.residue <= 1):
@@ -993,6 +1018,7 @@ class Electrostatics3SPN2(Force, simtk.openmm.CustomNonbondedForce):
             electrostaticForce.setNonbondedMethod(electrostaticForce.CutoffPeriodic)
         else:
             electrostaticForce.setNonbondedMethod(electrostaticForce.CutoffNonPeriodic)
+        electrostaticForce.setForceGroup(10)
         self.force = electrostaticForce
 
     def defineInteraction(self, dna):
@@ -1017,7 +1043,7 @@ class Electrostatics3SPN2(Force, simtk.openmm.CustomNonbondedForce):
         # add neighbor exclusion
         selection = atoms[is_dna]
         for (i, a1), (j, a2) in itertools.product(selection.iterrows(), repeat=2):
-            if j < i:
+            if j >= i:
                 continue
             if (a1.chain == a2.chain) and (abs(a1.residue - a2.residue) <= 1):
                 self.force.addExclusion(i, j)
@@ -1026,6 +1052,8 @@ class Electrostatics3SPN2(Force, simtk.openmm.CustomNonbondedForce):
             elif self.OpenCLPatch and (a1['type'] in _complement.keys()) and (a2['type'] in _complement.keys()) and (
                     a1['type'] == _complement[a2['type']]):
                 self.force.addExclusion(i, j)
+
+
 
 
 # Unit testing
