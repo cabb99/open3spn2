@@ -10,6 +10,5 @@ install:
   - conda info -a
   - conda create -q -n test-env python=$TRAVIS_PYTHON_VERSION -f environment.yml
   - source activate test-env
- -  pip install -r requirements.txt
 script: nosetests ff3SPN2.py
 
