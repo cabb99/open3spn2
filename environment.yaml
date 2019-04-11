@@ -10,6 +10,7 @@ dependencies:
 - automat=0.7.0=py36_0
 - babel=2.6.0=py_1
 - backcall=0.1.0=py_0
+- bcrypt=3.1.4=py36h470a237_0
 - biopython=1.72=py36_0
 - bleach=2.1.4=py_0
 - blosc=1.14.4=hfc679d8_0
@@ -27,6 +28,7 @@ dependencies:
 - cython=0.28.5=py36hfc679d8_0
 - dbus=1.13.0=h3a4f0e9_0
 - decorator=4.3.0=py_0
+- defusedxml=0.5.0=py_1
 - docutils=0.14=py36_1001
 - entrypoints=0.2.3=py36_1
 - expat=2.2.5=hfc679d8_1
@@ -85,7 +87,7 @@ dependencies:
 - matplotlib=2.2.3=py36h8e2386c_0
 - mistune=0.8.3=py36h470a237_2
 - mpld3=0.3=py_1
-- nbconvert=5.3.1=py_1
+- nbconvert=5.4.1=py_2
 - nbformat=4.4.0=py_1
 - ncurses=6.1=hfc679d8_1
 - netcdf4=1.4.1=py36h62672b6_0
@@ -145,7 +147,7 @@ dependencies:
 - tk=8.6.8=0
 - tornado=5.1=py36h470a237_1
 - traitlets=4.3.2=py36_0
-- twisted=18.7.0=py36h470a237_0
+- twisted=19.2.0=py36h516909a_0
 - urllib3=1.24.1=py36_1000
 - wcwidth=0.1.7=py_1
 - webencodings=0.5=py36_0
