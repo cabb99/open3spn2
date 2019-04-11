@@ -8,7 +8,7 @@ install:
   - conda config --set always_yes yes --set changeps1 no
   - conda update -q conda
   - conda info -a
-  - conda create -q -n test-env python=$TRAVIS_PYTHON_VERSION -f environment.yml
-  - source activate test-env
+  - conda env create -f environment.yml
+  - source activate py36
 script: nosetests ff3SPN2.py
 
