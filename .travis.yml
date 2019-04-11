@@ -1,5 +1,44 @@
 language: python
 python: 3.6
+matrix:
+  include:
+    - sudo: required
+      dist: trusty
+      env: ==CPU_OPENCL==
+           OPENCL=true
+           CUDA=false
+           CC=$CCACHE/gcc
+           CXX=$CCACHE/g++
+           CMAKE_FLAGS="
+           -OPENMM_BUILD_OPENCL_LIB=ON
+           -DOPENMM_BUILD_OPENCL_TESTS=ON
+           -DOPENMM_BUILD_STATIC_LIB=OFF
+           -DOPENMM_BUILD_CPU_LIB=OFF
+           -DOPENMM_BUILD_REFERENCE_TESTS=OFF
+           -DOPENMM_BUILD_SERIALIZATION_TESTS=OFF
+           -DOPENMM_BUILD_PME_PLUGIN=OFF
+           -DOPENMM_BUILD_AMOEBA_PLUGIN=OFF
+           -DOPENMM_BUILD_PYTHON_WRAPPERS=OFF
+           -DOPENMM_BUILD_C_AND_FORTRAN_WRAPPERS=OFF
+           -DOPENMM_BUILD_EXAMPLES=OFF
+           -DOPENCL_INCLUDE_DIR=$HOME/AMDAPPSDK/include
+           -DOPENCL_LIBRARY=$HOME/AMDAPPSDK/lib/x86_64/libOpenCL.so"
+      addons: {apt: {packages: []}}
+
+before_install:
+  - if [[ "$OPENCL" == "true" ]]; then
+      wget http://s3.amazonaws.com/omnia-ci/AMD-APP-SDKInstaller-v3.0.130.135-GA-linux64.tar.bz2;
+      tar -xjf AMD-APP-SDK*.tar.bz2;
+      AMDAPPSDK=${HOME}/AMDAPPSDK;
+      export OPENCL_VENDOR_PATH=${AMDAPPSDK}/etc/OpenCL/vendors;
+      mkdir -p ${OPENCL_VENDOR_PATH};
+      sh AMD-APP-SDK*.sh --tar -xf -C ${AMDAPPSDK};
+      echo libamdocl64.so > ${OPENCL_VENDOR_PATH}/amdocl64.icd;
+      export LD_LIBRARY_PATH=${AMDAPPSDK}/lib/x86_64:${LD_LIBRARY_PATH};
+      chmod +x ${AMDAPPSDK}/bin/x86_64/clinfo;
+      ${AMDAPPSDK}/bin/x86_64/clinfo;
+      sudo apt-get install -y libgl1-mesa-dev;
+    fi
 install: 
   - wget https://repo.continuum.io/miniconda/Miniconda3-latest-Linux-x86_64.sh -O miniconda.sh;
   - bash miniconda.sh -b -p $HOME/miniconda
@@ -10,5 +49,6 @@ install:
   - conda info -a
   - conda env create -f environment.yaml
   - source activate py36
+
 script: nosetests ff3SPN2.py
 
