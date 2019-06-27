@@ -8,6 +8,7 @@ dependencies:
 - apptools=4.4.0=py36_1002
 - arpack=3.6.3=h323e27b_1004
 - asn1crypto=0.24.0=py36_2
+- atk=2.32.0=haf93ef1_0
 - attrs=18.1.0=py_1
 - automat=0.7.0=py36_0
 - babel=2.6.0=py_1
@@ -18,6 +19,7 @@ dependencies:
 - blosc=1.14.4=hfc679d8_0
 - bzip2=1.0.6=h470a237_2
 - ca-certificates=2018.8.13=ha4d7672_0
+- cairo=1.16.0=ha4e643d_1000
 - certifi=2018.8.13=py36_0
 - cffi=1.11.5=py36h5e8e0c9_1
 - cftime=1.0.1=py36h7eb728f_0
@@ -37,14 +39,19 @@ dependencies:
 - envisage=4.7.1=py_0
 - expat=2.2.5=hfc679d8_1
 - fftw=3.3.8=nompi_h7f3a6c3_1105
-- fontconfig=2.13.0=h65d0f4c_5
+- fontconfig=2.13.1=he4413a7_1000
 - freetype=2.9.1=h6debe1e_0
 - future=0.17.1=py36_1000
+- gdk-pixbuf=2.36.12=h7a26e22_1003
 - gettext=0.19.8.1=0
-- glib=2.55.0=h464dc38_2
+- glib=2.58.3=h6f030ca_1001
 - gmp=6.1.2=hfc679d8_0
-- gst-plugins-base=1.12.5=hde13a9d_0
-- gstreamer=1.12.5=h61a6719_0
+- gobject-introspection=1.58.2=py36h5503ade_1001
+- graphite2=1.3.13=hf484d3e_1000
+- gst-plugins-base=1.14.5=h0935bb2_0
+- gstreamer=1.14.5=h36ae1b5_0
+- gtk2=2.24.31=hb68c50a_1001
+- harfbuzz=2.4.0=h37c48d4_1
 - hdf4=4.2.13=0
 - hdf5=1.10.4=nompi_h3c11f04_1106
 - html5lib=1.0.1=py_0
@@ -89,9 +96,10 @@ dependencies:
 - libiconv=1.15=h470a237_2
 - liblapack=3.8.0=8_openblas
 - libnetcdf=4.6.2=hbdf4f91_1001
+- libopenblas=0.3.6=h6e990d7_3
 - libpng=1.6.35=ha92aebf_0
 - libsodium=1.0.16=0
-- libssh2=1.8.0=h5b517e9_2
+- libssh2=1.8.0=h1ad7b7a_1003
 - libstdcxx-ng=7.3.0=hdf63c60_0
 - libtiff=4.0.10=h9022e91_1002
 - libuuid=2.32.1=h470a237_0
@@ -117,8 +125,9 @@ dependencies:
 - nose=1.3.7=py36_1002
 - notebook=5.6.0=py36_0
 - numexpr=2.6.6=py36_0
+- numpy=1.16.4=py36h95a1406_0
 - olefile=0.46=py_0
-- openblas=0.3.6=h6e990d7_1
+- openblas=0.3.6=h6e990d7_3
 - openlibm=0.5.4=h14c3975_1000
 - openspecfun=0.5.3=h1c2f66e_1000
 - openssl=1.0.2r=h14c3975_0
@@ -126,6 +135,7 @@ dependencies:
 - pandas=0.24.2=py36hf484d3e_0
 - pandoc=2.2.2=1
 - pandocfilters=1.4.2=py_1
+- pango=1.40.14=he7ab937_1005
 - parso=0.3.1=py_0
 - path.py=11.0.1=py_0
 - patsy=0.5.0=py_1
@@ -135,6 +145,7 @@ dependencies:
 - pickleshare=0.7.4=py36_0
 - pillow=6.0.0=py36he7afcd5_0
 - pip=18.0=py36_1
+- pixman=0.34.0=h14c3975_1003
 - prometheus_client=0.3.0=py_0
 - prompt_toolkit=1.0.15=py36_0
 - pthread-stubs=0.4=h470a237_1
@@ -155,10 +166,11 @@ dependencies:
 - pytz=2018.5=py_0
 - pyyaml=3.12=py36_1
 - pyzmq=17.1.2=py36hae99301_0
-- qt=5.6.2=hf70d934_9
+- qt=5.6.2=hce4f676_1013
 - qtconsole=4.4.0=py36h8a2030e_0
 - readline=7.0=haf1bffa_1
 - requests=2.21.0=py36_1000
+- scipy=1.3.0=py36h921218d_0
 - send2trash=1.5.0=py_0
 - service_identity=17.0.0=py_0
 - setuptools=40.0.0=py36_1
@@ -168,7 +180,7 @@ dependencies:
 - snowballstemmer=1.2.1=py_1
 - sphinx=1.8.3=py36_1000
 - sphinxcontrib-websupport=1.1.0=py_1
-- sqlite=3.24.0=h2f33b56_0
+- sqlite=3.28.0=h8b20d00_0
 - statsmodels=0.9.0=py36h7eb728f_0
 - suitesparse=4.5.6=heab0a99_1202
 - tbb=2019.5=hc9558a2_0
@@ -193,7 +205,11 @@ dependencies:
 - xorg-libx11=1.6.7=h14c3975_1000
 - xorg-libxau=1.0.8=h470a237_6
 - xorg-libxdmcp=1.1.2=h470a237_7
+- xorg-libxext=1.3.4=h516909a_0
+- xorg-libxrender=0.9.10=h516909a_1002
 - xorg-libxt=1.1.5=h14c3975_1002
+- xorg-renderproto=0.11.1=h14c3975_1002
+- xorg-xextproto=7.3.0=h14c3975_1002
 - xorg-xproto=7.0.31=h14c3975_1007
 - xz=5.2.4=h470a237_1
 - yaml=0.1.7=h470a237_1
@@ -203,8 +219,6 @@ dependencies:
 - zstd=1.3.3=1
 - blas=1.0=mkl
 - mkl=2017.0.3=0
-- numpy=1.13.1=py36_0
-- scipy=0.19.1=np113py36_0
 - appdirs=1.4.0=py36_0
 - fftw3f=3.3.4=2
 - mdtraj=1.9.1=py36_0
@@ -212,3 +226,4 @@ dependencies:
 - openmmtools=0.15.0=py36_0
 - parmed=3.0.1=py36_1
 - pdbfixer=1.5=py36_0
+
