@@ -34,5 +34,7 @@ install:
   - conda env create -f environment.yaml
   - source activate py36
 
-script: nosetests ff3SPN2.py
+script:
+  - conda list
+  - nosetests ff3SPN2.py
 
