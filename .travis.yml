@@ -36,5 +36,6 @@ install:
 
 script:
   - conda list
+  - conda env list
   - nosetests ff3SPN2.py
 
