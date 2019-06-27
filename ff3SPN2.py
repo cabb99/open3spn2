@@ -8,7 +8,7 @@ DNA simulation using the 3SPN2 and 3SPN2.C forcefields in openmm.
 # TODO put tests in their own folder
 
 __author__ = 'Carlos Bueno'
-__version__ = '0.2'
+__version__ = '0.3'
 
 import simtk.openmm.app
 import simtk.openmm
@@ -18,17 +18,20 @@ import numpy as np
 import itertools
 import scipy.spatial.distance as sdist
 import os
+import simtk.openmm.app
+import pdbfixer
 
 __location__ = os.path.realpath(os.path.join(os.getcwd(), os.path.dirname(__file__)))
 _ef = 1 * unit.kilocalorie / unit.kilojoule  # energy scaling factor
 _df = 1 * unit.angstrom / unit.nanometer  # distance scaling factor
 _af = 1 * unit.degree / unit.radian  # angle scaling factor
 _complement = {'A': 'T', 'T': 'A', 'G': 'C', 'C': 'G'}
-_dnaResidues=['DA', 'DC', 'DT', 'DG']
+_dnaResidues = ['DA', 'DC', 'DT', 'DG']
 
 
 def parseConfigTable(config_section):
-    """Parses a section of the configuration file as a table"""
+    """ Parses a section of the configuration file as a table.
+        This function is used to parse the 3SPN2.conf file"""
 
     def readData(config_section, a):
         """Filters comments and returns values as a list"""
@@ -58,12 +61,89 @@ def parseConfigTable(config_section):
     return pandas.DataFrame(data, columns=columns)
 
 
-# Errors
+def parsePDB(pdb_file):
+    """ Transforms the pdb file into a pandas table for easy access and data editing"""
+    def pdb_line(line):
+        return dict(recname=str(line[0:6]).strip(),
+                    serial=int(line[6:11]),
+                    name=str(line[12:16]).strip(),
+                    altLoc=str(line[16:17]),
+                    resname=str(line[17:20]).strip(),
+                    chainID=str(line[21:22]),
+                    resSeq=int(line[22:26]),
+                    iCode=str(line[26:27]),
+                    x=float(line[30:38]),
+                    y=float(line[38:46]),
+                    z=float(line[46:54]),
+                    occupancy=float(line[54:60]),
+                    tempFactor=float(line[60:66]),
+                    element=str(line[76:78]),
+                    charge=str(line[78:80]))
+
+    with open(pdb_file, 'r') as pdb:
+        lines = []
+        for line in pdb:
+            if len(line) > 6 and line[:6] in ['ATOM  ', 'HETATM']:
+                lines += [pdb_line(line)]
+    pdb_atoms = pandas.DataFrame(lines)
+    pdb_atoms = pdb_atoms[['recname', 'serial', 'name', 'altLoc',
+                           'resname', 'chainID', 'resSeq', 'iCode',
+                           'x', 'y', 'z', 'occupancy', 'tempFactor',
+                           'element', 'charge']]
+    return pdb_atoms
+
+
+def fixPDB(pdb_file):
+    """Uses the pdbfixer library to fix a pdb file, replacing non standard residues, removing
+    hetero-atoms and adding missing hydrogens. The input is a pdb file location,
+    the output is a fixer object, which is a pdb in the openawsem format."""
+    fixer = pdbfixer.PDBFixer(filename=pdb_file, )
+    fixer.findMissingResidues()
+    chains = list(fixer.topology.chains())
+    keys = fixer.missingResidues.keys()
+    for key in list(keys):
+        chain_tmp = chains[key[0]]
+        if key[1] == 0 or key[1] == len(list(chain_tmp.residues())):
+            del fixer.missingResidues[key]
+
+    fixer.findNonstandardResidues()
+    fixer.replaceNonstandardResidues()
+    fixer.removeHeterogens(keepWater=False)
+    fixer.findMissingAtoms()
+    fixer.addMissingAtoms()
+    fixer.addMissingHydrogens(7.0)
+    return fixer
+
+
+def pdb2table(pdb):
+    """ Parses a pdb in the openawsem format and outputs a table that contains all the information
+    on a pdb file """
+    cols = ['recname', 'serial', 'name', 'altLoc',
+            'resname', 'chainID', 'resSeq', 'iCode',
+            'x', 'y', 'z', 'occupancy', 'tempFactor',
+            'element', 'charge']
+    data = []
+    for atom, pos in zip(pdb.topology.atoms(), pdb.positions):
+        residue = atom.residue
+        chain = residue.chain
+        pos = pos.value_in_unit(simtk.unit.angstrom)
+        data += [dict(zip(cols, ['ATOM', int(atom.id), atom.name, '',
+                                 residue.name, chain.id, int(residue.id), '',
+                                 pos[0], pos[1], pos[2], 0, 0,
+                                 atom.element.symbol, '']))]
+    atom_list = pandas.DataFrame(data)
+    atom_list = atom_list[cols]
+    atom_list.index = atom_list['serial']
+    return atom_list
+
+
+# Some typical errors
 class BaseError(Exception):
     pass
 
 
 class DNATypeError(BaseError):
+    """Only some DNA types are defined (A, B, B_curved)"""
     def __init__(self, dna):
         self.dna = dna
         self.message = f'DNA type {dna.DNAtype} not defined in the configuration file\n'
@@ -78,7 +158,7 @@ class DNA(object):
         self.periodic = periodic
 
     def __repr__(self):
-        return f'DNA object'
+        return f'3SPN2 DNA object ({len(self.atoms)} atoms)'
         # print the sequence and the identity of the DNA object
 
     def parseConfigurationFile(self, configuration_file=f'{__location__}/3SPN2.conf'):
@@ -110,12 +190,12 @@ class DNA(object):
         index = {}
         cr_list = set()  # Chain residue list
         for i, atom in self.atoms.iterrows():
-            index.update({(atom['chain'], atom['residue'], atom['type']): i})
-            cr_list.update([(atom['chain'], atom['residue'])])
+            index.update({(atom['chainID'], atom['resSeq'], atom['type']): i})
+            cr_list.update([(atom['chainID'], atom['resSeq'])])
         cr_list = list(cr_list)
         cr_list.sort()
         # max_chain = self.atoms['chain'].max()
-        # max_residue = self.atoms['residue'].max()
+        # max_residue = self.atoms['resSeq'].max()
         assert len(index) == len(self.atoms), 'Atom index was repeated'
 
         # Select ADNA bond definitions
@@ -124,8 +204,8 @@ class DNA(object):
         angle_types = self.angle_definition[self.angle_definition['DNA'] == DNAtype]
         stacking_types = self.stacking_definition[self.stacking_definition['DNA'] == DNAtype]
         dihedral_types = self.dihedral_definition[self.dihedral_definition['DNA'] == DNAtype]
-        #print(bond_types)
-        #print(index)
+        # print(bond_types)
+        # print(index)
         # Make a table with bonds
         data = []
         for i, ftype in bond_types.iterrows():
@@ -255,7 +335,7 @@ class DNA(object):
         """ Writes a minimal version of the pdb file needed for openmm """
         # Compute chain field
         chain_ix = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz'
-        self.atoms['chainid'] = [chain_ix[i - 1] for i in self.atoms['chain']]
+        self.atoms['chainID'] = [chain_ix[i - 1] for i in self.atoms['chainID']]
 
         # Compute element fields
         element_ix = {'P': 'P', 'S': 'H', 'A': 'N', 'T': 'S', 'C': 'O', 'G': 'C'}  # Elements choosen to keep VMD colors
@@ -264,13 +344,13 @@ class DNA(object):
         # Write pdb file
         with open(pdb_file, 'w+') as pdb:
             for i, atom in self.atoms.iterrows():
-                pdb_line = f'ATOM  {i + 1:>5} {atom.type:^4} {atom.resname:<3}  {atom.chainid}{atom.residue:>3}    {atom.x:>8.3f}{atom.y:>8.3f}{atom.z:>8.3f}' + ' ' * 22 + f'{atom.element:2}' + ' ' * 2
+                pdb_line = f'ATOM  {i + 1:>5} {atom.type:^4} {atom.resname:<3}  {atom.chainID}{atom.resSeq:>3}    {atom.x:>8.3f}{atom.y:>8.3f}{atom.z:>8.3f}' + ' ' * 22 + f'{atom.element:2}' + ' ' * 2
                 assert len(pdb_line) == 80, 'An item in the atom table is longer than expected'
                 pdb.write(pdb_line + '\n')
         self.pdb_file = pdb_file
 
     @classmethod
-    def fromCoarsePDB(cls, pdb_file, dnatype='B_curved'):
+    def fromCoarsePDB(cls, pdb_file, dna_type='B_curved'):
         """Initializes a DNA object from a pdb file"""
         self = cls()
 
@@ -298,19 +378,85 @@ class DNA(object):
                     lines += [pdb_line(line)]
         pdb_atoms = pandas.DataFrame(lines)
         self.atoms = pdb_atoms[['recname', 'serial', 'name', 'altLoc',
-                               'resname', 'chainID', 'resSeq', 'iCode',
-                               'x', 'y', 'z', 'occupancy', 'tempFactor',
-                               'element', 'charge']]
-        self.atoms.loc[:, 'chain'] = self.atoms['chainID']
-        self.atoms.loc[:, 'residue'] = self.atoms['resSeq']
+                                'resname', 'chainID', 'resSeq', 'iCode',
+                                'x', 'y', 'z', 'occupancy', 'tempFactor',
+                                'element', 'charge']]
+        print(self.atoms.columns)
+        #self.atoms.loc[:, 'chain'] = self.atoms['chainID']
+        #self.atoms.loc[:, 'residue'] = self.atoms['resSeq']
         self.atoms.loc[:, 'type'] = self.atoms['name']
-
+        print(self.atoms.columns)
         # Initialize the system from the pdb
-        self.DNAtype = dnatype
+        self.DNAtype = dna_type
         self.parseConfigurationFile()
         self.computeTopology()
         self.pdb_file = pdb_file
         return self
+
+    @classmethod
+    def fromPDB(cls, pdb_file, dna_type='B_curved'):
+        """Creates a DNA object from a complete(atomistic) pdb file"""
+        self = cls()
+        pdb = fixPDB(pdb_file)
+        pdb_table = pdb2table(pdb)
+        masses = {"H": 1.00794, "C": 12.0107, "N": 14.0067, "O": 15.9994, "P": 30.973762, }
+        CG = {"O5\'": 'P', "C5\'": 'S', "C4\'": 'S', "O4\'": 'S', "C3\'": 'S', "O3\'": 'P',
+              "C2\'": 'S', "C1\'": 'S', "O5*": 'P', "C5*": 'S', "C4*": 'S', "O4*": 'S',
+              "C3*": 'S', "O3*": 'P', "C2*": 'S', "C1*": 'S', "N1": 'B', "C2": 'B', "O2": 'B',
+              "N2": 'B', "N3": 'B', "C4": 'B', "N4": 'B', "C5": 'B', "C6": 'B', "N9": 'B',
+              "C8": 'B', "O6": 'B', "N7": 'B', "N6": 'B', "O4": 'B', "C7": 'B', "P": 'P',
+              "OP1": 'P', "OP2": 'P', "O1P": 'P', "O2P": 'P', "OP3": 'P', "HO5'": 'P',
+              "H5'": 'S', "H5''": 'S', "H4'": 'S', "H3'": 'S', "H2'": 'S', "H2''": 'S',
+              "H1'": 'S', "H8": 'B', "H61": 'B', "H62": 'B', 'H2': 'B', 'H1': 'B', 'H21': 'B',
+              'H22': 'B', 'H3': 'B', 'H71': 'B', 'H72': 'B', 'H73': 'B', 'H6': 'B', 'H41': 'B',
+              'H42': 'B', 'H5': 'B', "HO3'": 'P'}
+        cols = ['recname', 'serial', 'name', 'altLoc',
+                'resname', 'chainID', 'resSeq', 'iCode',
+                'x', 'y', 'z', 'occupancy', 'tempFactor',
+                'element', 'charge', 'type']
+        temp = pdb_table.copy()
+
+        # Select DNA residues
+        temp = temp[temp['resname'].isin(['DA', 'DT', 'DG', 'DC'])]
+
+        # Groupd the atoms by sugar, phosphate or base
+        temp['group'] = temp.name.replace(CG)
+        temp = temp[temp['group'].isin(['P', 'S', 'B'])]
+
+        # Calculate center of mass
+        temp['mass'] = temp.element.replace(masses).astype(float)
+        temp[['x', 'y', 'z']] = (temp[['x', 'y', 'z']].T * temp['mass']).T[['x', 'y', 'z']]
+        temp = temp[temp['element'] != 'H']  # Exclude hydrogens
+        Coarse = temp.groupby(['chainID', 'resSeq', 'resname', 'group']).sum().reset_index()
+        Coarse[['x', 'y', 'z']] = (Coarse[['x', 'y', 'z']].T / Coarse['mass']).T[['x', 'y', 'z']]
+
+        # Set pdb columns
+        Coarse['recname'] = 'ATOM'
+        Coarse['name'] = Coarse['group']
+        Coarse['type'] = Coarse['group']
+        Coarse['altLoc'] = ''
+        Coarse['iCode'] = ''
+        Coarse['charge'] = ''
+        # Change name of base to real base
+        mask = (Coarse.name == 'B')
+        Coarse.loc[mask, 'name'] = Coarse[mask].resname.str[-1]  # takes last letter from the residue name
+        # Set element (depends on base)
+        Coarse['element'] = Coarse['name'].replace({'P': 'P', 'S': 'H', 'A': 'N', 'T': 'S', 'G': 'C', 'C': 'O'})
+        # Remove P from the beggining
+        drop_list = []
+        for chain in Coarse.chainID.unique():
+            sel = Coarse[Coarse.chainID == chain]
+            drop_list += list(sel[(sel.resSeq == sel.resSeq.min()) & sel['name'].isin(['P'])].index)
+        Coarse = Coarse.drop(drop_list)
+        # Renumber
+        Coarse['serial'] = range(len(Coarse))
+        self.atoms = Coarse[cols]
+        self.DNAtype = dna_type
+        self.parseConfigurationFile()
+        self.computeTopology()
+        self.pdb_file = pdb_file
+        return self
+
 
     @classmethod
     def fromGRO(cls, gro_file):
@@ -359,21 +505,21 @@ class DNA(object):
                 sugar = False
             residues += [residue]
             chains += [chain]
-        self.atoms['residue'] = residues
-        self.atoms['chain'] = chains
+        self.atoms['resSeq'] = residues
+        self.atoms['chainID'] = chains
 
         # compute resid and resname fields
         res_ix = {}
-        min_res = self.atoms.groupby('chain')['residue'].min()
-        max_res = self.atoms.groupby('chain')['residue'].max()
+        # min_res = self.atoms.groupby('chain')['resSeq'].min()
+        # max_res = self.atoms.groupby('chain')['resSeq'].max()
         for i, res in self.atoms[~self.atoms['type'].isin(['S', 'P'])].iterrows():
             resname = 'D' + res['type']
-            # if res['residue'] == min_res[res['chain']]:
+            # if res['resSeq'] == min_res[res['chain']]:
             #    resname += 'i'
-            # if res['residue'] == max_res[res['chain']]:
+            # if res['resSeq'] == max_res[res['chain']]:
             #    resname += 'f'
-            res_ix.update({(res['chain'], res['residue']): resname})
-        self.atoms['resname'] = [res_ix[(r['chain'], r['residue'])] for i, r in self.atoms.iterrows()]
+            res_ix.update({(res['chainID'], res['resSeq']): resname})
+        self.atoms['resname'] = [res_ix[(r['chainID'], r['resSeq'])] for i, r in self.atoms.iterrows()]
         self.DNAtype = dnatype
         self.parseConfigurationFile()
         self.computeTopology()
@@ -489,7 +635,6 @@ class Force(object):
         self.reset(dna, periodic)
         # Define the interaction pairs
         self.defineInteraction(dna)
-
 
     def computeEnergy(self, system, trajectory):
         # Parse trajectory
@@ -731,9 +876,9 @@ class BasePair3SPN2(Force, simtk.openmm.CustomHbondForce):
             atoms.loc[A1, 'aceptor_id'] = [i for i in range(len(A1))]
             atoms.loc[D1 + A1]
 
-            interaction = np.zeros([len(dna.atoms.residue.unique()) // 2, len(dna.atoms.residue.unique()) // 2])
+            interaction = np.zeros([len(dna.atoms.resSeq.unique()) // 2, len(dna.atoms.resSeq.unique()) // 2])
             interaction[:, :] = 1
-            for k, chain in atoms.loc[D1 + A1].groupby('chain'):
+            for k, chain in atoms.loc[D1 + A1].groupby('chainID'):
                 dds = chain.donor_id.dropna()
                 aas = chain.aceptor_id.dropna()
                 for d, a in itertools.product(dds.iteritems(), aas.iteritems()):
@@ -747,12 +892,13 @@ class BasePair3SPN2(Force, simtk.openmm.CustomHbondForce):
                     # This change has no noticeable effect
                     if abs(ai - di) <= 6:
                         self.forces[i].addExclusion(d, a)
-                        #print(di, ai, d, a)
+                        # print(di, ai, d, a)
                         interaction[d, a] = 0
 
     def addForce(self, system):
         for f in self.forces:
             system.addForce(self.forces[f])
+
 
 class CrossStacking3SPN2(Force):
     def __getattr__(self, attr):
@@ -766,7 +912,7 @@ class CrossStacking3SPN2(Force):
                 # Divide the energy over two to make the interaction symetric
                 patch_string = '/2'
             else:
-                patch_string=''
+                patch_string = ''
             crossForce = simtk.openmm.CustomHbondForce(f'''energy{patch_string};temp=dtCS/rng_CS;
                                                         energy   = fdt3*fdtCS*attr;
                                                         attr     = epsilon*(1-exp(-alpha*dr))^2*step(dr)-epsilon;
@@ -900,7 +1046,7 @@ class CrossStacking3SPN2(Force):
                         maxn = 6
                     else:
                         maxn = 9
-                    if (dna.atoms.at[i, 'chain'] == dna.atoms.at[j, 'chain'] and abs(i - j) <= maxn) or \
+                    if (dna.atoms.at[i, 'chainID'] == dna.atoms.at[j, 'chainID'] and abs(i - j) <= maxn) or \
                             (not self.OpenCLPatch and i > j):
                         c1.addExclusion(ii, jj)
                         c2.addExclusion(jj, ii)
@@ -911,7 +1057,7 @@ class CrossStacking3SPN2(Force):
             system.addForce(c2)
 
 
-def addNonBondedExclusions(dna,force):
+def addNonBondedExclusions(dna, force):
     is_dna = dna.atoms['resname'].isin(_dnaResidues)
     atoms = dna.atoms.copy()
     selection = atoms[is_dna]
@@ -919,14 +1065,15 @@ def addNonBondedExclusions(dna,force):
         if j >= i:
             continue
         # Neighboring residues
-        if atom_a['chain'] == atom_b['chain'] and (atom_a.residue - atom_b.residue <= 1):
+        if atom_a['chainID'] == atom_b['chainID'] and (atom_a.resSeq - atom_b.resSeq <= 1):
             force.addExclusion(i, j)
-            print(i,j)
+            print(i, j)
         # Base-pair residues
         elif (atom_a['type'] in _complement.keys()) and (atom_b['type'] in _complement.keys()) and (
                 atom_a['type'] == _complement[atom_b['type']]):
             force.addExclusion(i, j)
             print(i, j)
+
 
 class Exclusion3SPN2(Force, simtk.openmm.CustomNonbondedForce):
     def __getattr__(self, attr):
@@ -942,7 +1089,7 @@ class Exclusion3SPN2(Force, simtk.openmm.CustomNonbondedForce):
         exclusionForce.addPerParticleParameter('epsilon')
         exclusionForce.addPerParticleParameter('sigma')
         exclusionForce.setCutoffDistance(1.8)
-        exclusionForce.setForceGroup(9) # There can not be multiple cutoff distance on the same force group
+        exclusionForce.setForceGroup(9)  # There can not be multiple cutoff distance on the same force group
         if periodic:
             exclusionForce.setNonbondedMethod(exclusionForce.CutoffPeriodic)
         else:
@@ -955,7 +1102,7 @@ class Exclusion3SPN2(Force, simtk.openmm.CustomNonbondedForce):
         particle_definition.index = particle_definition.name
         self.force.setCutoffDistance(particle_definition.radius.max() * _df)
 
-        #Select only dna atoms
+        # Select only dna atoms
         is_dna = dna.atoms['resname'].isin(_dnaResidues)
         atoms = dna.atoms.copy()
         atoms['is_dna'] = is_dna
@@ -971,11 +1118,11 @@ class Exclusion3SPN2(Force, simtk.openmm.CustomNonbondedForce):
 
         # addExclusions
         selection = atoms[is_dna]
-        for (i, atom_a),(j, atom_b) in itertools.product(selection.iterrows(), repeat=2):
+        for (i, atom_a), (j, atom_b) in itertools.product(selection.iterrows(), repeat=2):
             if j >= i:
                 continue
             # Neighboring residues
-            if atom_a['chain'] == atom_b['chain'] and (atom_a.residue - atom_b.residue <= 1):
+            if atom_a['chainID'] == atom_b['chainID'] and (atom_a.resSeq - atom_b.resSeq <= 1):
                 self.force.addExclusion(i, j)
             # Base-pair residues
             elif (atom_a['type'] in _complement.keys()) and (atom_b['type'] in _complement.keys()) and (
@@ -1026,7 +1173,7 @@ class Electrostatics3SPN2(Force, simtk.openmm.CustomNonbondedForce):
         particle_definition = dna.particle_definition[dna.particle_definition['DNA'] == dna.DNAtype]
         particle_definition.index = particle_definition.name
 
-        #Select only dna atoms
+        # Select only dna atoms
         is_dna = dna.atoms['resname'].isin(_dnaResidues)
         atoms = dna.atoms.copy()
         atoms['is_dna'] = is_dna
@@ -1036,7 +1183,7 @@ class Electrostatics3SPN2(Force, simtk.openmm.CustomNonbondedForce):
                 param = particle_definition.loc[atom.type]
                 parameters = [param.charge]
             else:
-                parameters = [0] # No charge if it is not DNA
+                parameters = [0]  # No charge if it is not DNA
             # print (i,parameters)
             self.force.addParticle(parameters)
 
@@ -1045,20 +1192,18 @@ class Electrostatics3SPN2(Force, simtk.openmm.CustomNonbondedForce):
         for (i, a1), (j, a2) in itertools.product(selection.iterrows(), repeat=2):
             if j >= i:
                 continue
-            if (a1.chain == a2.chain) and (abs(a1.residue - a2.residue) <= 1):
+            if (a1.chainID == a2.chainID) and (abs(a1.resSeq - a2.resSeq) <= 1):
                 self.force.addExclusion(i, j)
-                # print (i,j,a1.chain,a2.chain,a1.residue,a2.residue,(a1.residue-a2.residue))
-            #All Non-bonded forces must have the same exclusions
+                # print (i,j,a1.chain,a2.chain,a1.resSeq,a2.resSeq,(a1.resSeq-a2.resSeq))
+            # All Non-bonded forces must have the same exclusions
             elif self.OpenCLPatch and (a1['type'] in _complement.keys()) and (a2['type'] in _complement.keys()) and (
                     a1['type'] == _complement[a2['type']]):
                 self.force.addExclusion(i, j)
 
 
-
-
 # Unit testing
 def test_DNA_from_pdb():
-    pass
+    mol = DNA.fromPDB("examples/1svc/1svc.pdb")
 
 
 def test_DNA_from_gro():
@@ -1155,17 +1300,6 @@ class TestEnergies:
                       Exclusion=Exclusion3SPN2,
                       Electrostatics=Electrostatics3SPN2)
 
-    # @classmethod
-    # def setup(cls, folder='examples/adna/', dna_type='A'):
-    #     cls.dna = DNA.fromXYZ(f'{folder}/in00_conf.xyz')
-    #
-    #     cls.dna.parseConfigurationFile()
-    #     cls.dna.computeTopology(dna_type)
-    #     cls.dna.writePDB()
-    #     cls.system = System(cls.dna)
-    #     cls.system.clearForces()
-    #     cls.system.setDefaultPeriodicBoxVectors(*np.diag([2 * 9.4208000] * 3))
-
     def _test_energy(self,
                      log_energy='E_bond',
                      log_file='examples/adna/sim.log',
@@ -1175,15 +1309,10 @@ class TestEnergies:
                      dna_type='A', periodic_size=94.2,
                      platform_name='Reference'):
         self.dna = DNA.fromXYZ(f'{folder}/in00_conf.xyz', dna_type)
-
-        # self.dna.parseConfigurationFile()
-        # self.dna.computeTopology()
-        # self.dna.writePDB()
         self.system = System(self.dna)
         self.system.clearForces()
         self.system.setDefaultPeriodicBoxVectors(*np.diag([2 * periodic_size / 10] * 3))
 
-        # print(log_energy, log_file, traj_file)
         log = parse_log(log_file)
 
         self.system.clearForces()
@@ -1208,10 +1337,6 @@ class TestEnergies:
 
     def test_energies(self):
         test_sets = pandas.read_csv('test_cases.csv', comment='#')
-        # for idx, tests in test_sets.groupby(['DNA type', 'Folder']):
-        #    dna_type = idx[0]
-        #    folder = idx[1]
-        # self.setup(folder=folder, dna_type=dna_type)
         for i, test in test_sets.iterrows():
             dna_type = test['DNA type']
             folder = test['Folder']

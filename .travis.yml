@@ -7,22 +7,6 @@ matrix:
       env: ==CPU_OPENCL==
            OPENCL=true
            CUDA=false
-           CC=$CCACHE/gcc
-           CXX=$CCACHE/g++
-           CMAKE_FLAGS="
-           -OPENMM_BUILD_OPENCL_LIB=ON
-           -DOPENMM_BUILD_OPENCL_TESTS=ON
-           -DOPENMM_BUILD_STATIC_LIB=OFF
-           -DOPENMM_BUILD_CPU_LIB=OFF
-           -DOPENMM_BUILD_REFERENCE_TESTS=OFF
-           -DOPENMM_BUILD_SERIALIZATION_TESTS=OFF
-           -DOPENMM_BUILD_PME_PLUGIN=OFF
-           -DOPENMM_BUILD_AMOEBA_PLUGIN=OFF
-           -DOPENMM_BUILD_PYTHON_WRAPPERS=OFF
-           -DOPENMM_BUILD_C_AND_FORTRAN_WRAPPERS=OFF
-           -DOPENMM_BUILD_EXAMPLES=OFF
-           -DOPENCL_INCLUDE_DIR=$HOME/AMDAPPSDK/include
-           -DOPENCL_LIBRARY=$HOME/AMDAPPSDK/lib/x86_64/libOpenCL.so"
       addons: {apt: {packages: []}}
 
 before_install:
