@@ -20,6 +20,7 @@ import scipy.spatial.distance as sdist
 import os
 import simtk.openmm.app
 import pdbfixer
+import nose
 
 __location__ = os.path.realpath(os.path.join(os.getcwd(), os.path.dirname(__file__)))
 _ef = 1 * unit.kilocalorie / unit.kilojoule  # energy scaling factor
@@ -63,6 +64,7 @@ def parseConfigTable(config_section):
 
 def parsePDB(pdb_file):
     """ Transforms the pdb file into a pandas table for easy access and data editing"""
+
     def pdb_line(line):
         return dict(recname=str(line[0:6]).strip(),
                     serial=int(line[6:11]),
@@ -144,6 +146,7 @@ class BaseError(Exception):
 
 class DNATypeError(BaseError):
     """Only some DNA types are defined (A, B, B_curved)"""
+
     def __init__(self, dna):
         self.dna = dna
         self.message = f'DNA type {dna.DNAtype} not defined in the configuration file\n'
@@ -382,8 +385,8 @@ class DNA(object):
                                 'x', 'y', 'z', 'occupancy', 'tempFactor',
                                 'element', 'charge']]
         print(self.atoms.columns)
-        #self.atoms.loc[:, 'chain'] = self.atoms['chainID']
-        #self.atoms.loc[:, 'residue'] = self.atoms['resSeq']
+        # self.atoms.loc[:, 'chain'] = self.atoms['chainID']
+        # self.atoms.loc[:, 'residue'] = self.atoms['resSeq']
         self.atoms.loc[:, 'type'] = self.atoms['name']
         print(self.atoms.columns)
         # Initialize the system from the pdb
@@ -456,7 +459,6 @@ class DNA(object):
         self.computeTopology()
         self.pdb_file = pdb_file
         return self
-
 
     @classmethod
     def fromGRO(cls, gro_file):
@@ -1304,12 +1306,10 @@ class TestEnergies:
                      log_energy='E_bond',
                      log_file='examples/adna/sim.log',
                      traj_file='examples/adna/traj.xyz',
-                     force='Bond',
-                     folder='examples/adna/',
-                     dna_type='A', periodic_size=94.2,
-                     platform_name='Reference'):
-        self.dna = DNA.fromXYZ(f'{folder}/in00_conf.xyz', dna_type)
-        self.system = System(self.dna)
+                     force='Bond', periodic_size=94.2,
+                     platform_name='Reference',dna=None, system=None):
+        self.dna=dna
+        self.system=system
         self.system.clearForces()
         self.system.setDefaultPeriodicBoxVectors(*np.diag([2 * periodic_size / 10] * 3))
 
@@ -1336,6 +1336,18 @@ class TestEnergies:
         assert len(results.dropna()) == len(results), results
 
     def test_energies(self):
+        test_sets = pandas.read_csv('test_cases.csv', comment='#')
+        for i, tests in test_sets.groupby(['Folder', 'DNA type']):
+            folder = i[0]
+            dna_type = i[1]
+            self.dna = DNA.fromXYZ(f'{folder}/in00_conf.xyz', dna_type)
+            self.system = System(self.dna)
+            for j, test in tests.iterrows():
+                print(j)
+                yield self._test_energy, test['Energy term'], f'{folder}/{test.Log}', f'{folder}/{test.Trajectory}',\
+                      test['Name'], test['periodic size'], test['Platform'], self.dna, self.system
+
+    def _test_energies_slow(self):
         test_sets = pandas.read_csv('test_cases.csv', comment='#')
         for i, test in test_sets.iterrows():
             dna_type = test['DNA type']
