@@ -1,3 +1,4 @@
+[![Build Status](https://travis-ci.org/cabb99/open3spn2.svg?branch=master)](https://travis-ci.org/cabb99/open3spn2?branch=master)
 # Open-3SPN2
 Coarse-grained molecular model of DNA (for OpenMM)
 
