@@ -640,7 +640,7 @@ class Force(object):
 
     def computeEnergy(self, system, trajectory):
         # Parse trajectory
-        traj = parse_xyz('examples/adna/traj.xyz')
+        traj = parse_xyz('Tests/adna/traj.xyz')
 
         # clear all forces on the system
         system.clearForces()
@@ -655,7 +655,7 @@ class Force(object):
 
     def computeSingleEnergy(self, system, trajectory):
         # Parse trajectory
-        traj = parse_xyz('examples/adna/traj.xyz')
+        traj = parse_xyz('Tests/adna/traj.xyz')
         # for each item of the table:
         # clear all forces on the system
         # system.clearForces()
@@ -1205,7 +1205,7 @@ class Electrostatics3SPN2(Force, simtk.openmm.CustomNonbondedForce):
 
 # Unit testing
 def test_DNA_from_pdb():
-    mol = DNA.fromPDB("examples/1svc/1svc.pdb")
+    mol = DNA.fromPDB("Tests/1svc/1svc.pdb")
 
 
 def test_DNA_from_gro():
@@ -1218,7 +1218,7 @@ def test_DNA_from_seq():
 
 def test_DNA_from_xyz():
     """Tests the correct parsing from an xyz file"""
-    mol = DNA.fromXYZ('examples/adna/in00_conf.xyz')
+    mol = DNA.fromXYZ('Tests/adna/in00_conf.xyz')
     assert mol.atoms.at[8, 'type'] == 'P'
     assert round(mol.atoms.at[188, 'y'], 6) == -8.779343
 
@@ -1279,14 +1279,14 @@ def parse_log(filename=''):
 
 def test_parse_xyz():
     """Tests the example trajectory parsing"""
-    xyz_data = parse_xyz('examples/adna/traj.xyz')
+    xyz_data = parse_xyz('Tests/adna/traj.xyz')
     assert xyz_data.at[1, 'type'] == 7
     assert xyz_data.at[1, 'x'] == 4.34621
 
 
 def test_parse_log():
     """Tests the example log parsing"""
-    log_data = parse_log('examples/adna/sim.log')
+    log_data = parse_log('Tests/adna/sim.log')
     assert log_data.at[1, 'Step'] == 2000
     assert log_data.at[1, 'eexcl'] == 0.45734636
 
@@ -1304,8 +1304,8 @@ class TestEnergies:
 
     def _test_energy(self,
                      log_energy='E_bond',
-                     log_file='examples/adna/sim.log',
-                     traj_file='examples/adna/traj.xyz',
+                     log_file='Tests/adna/sim.log',
+                     traj_file='Tests/adna/traj.xyz',
                      force='Bond', periodic_size=94.2,
                      platform_name='Reference',dna=None, system=None):
         self.dna=dna
@@ -1336,7 +1336,7 @@ class TestEnergies:
         assert len(results.dropna()) == len(results), results
 
     def test_energies(self):
-        test_sets = pandas.read_csv('test_cases.csv', comment='#')
+        test_sets = pandas.read_csv('Tests/test_cases.csv', comment='#')
         for i, tests in test_sets.groupby(['Folder', 'DNA type']):
             folder = i[0]
             dna_type = i[1]
@@ -1348,7 +1348,7 @@ class TestEnergies:
                       test['Name'], test['periodic size'], test['Platform'], self.dna, self.system
 
     def _test_energies_slow(self):
-        test_sets = pandas.read_csv('test_cases.csv', comment='#')
+        test_sets = pandas.read_csv('Tests/test_cases.csv', comment='#')
         for i, test in test_sets.iterrows():
             dna_type = test['DNA type']
             folder = test['Folder']

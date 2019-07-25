@@ -1,9 +1,0 @@
-##### 
-NOTE: THE IONS MODEL IMPLEMENTED HERE IS SUPERCEDED BY
-THE GENERAL COARSE-GRAINED IONS (GCGI), WHICH IS NOW INCLUDED
-WITH USER-3SPN2.
-#####
-
-Configuration files were generated with the command;
-
-../../DSIM_ICNF/icnf.exe ../seq 0 1 . 1 ../ions.dat

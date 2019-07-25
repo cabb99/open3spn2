@@ -1,4 +1,0 @@
-100.0   :: NaCl Concentration [mM]
-20.0    :: MgCl2 Concentration [mM]
-0.70    :: Box scaling factor to adjust the size of the box 
-100.00  :: Length of cubic box when genenerating a box containing ions only

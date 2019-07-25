@@ -1,4 +1,0 @@
-The General Coarse-grained Ions (GCGI) model was added to USER-3SPN2.  GCGI
-represents a significant improvement over ions model published by Freeman et al.
-USER-3SPN2 was also updated to be compatible with the 10 Aug 2015 version of LAMMPS 
-(revision 13864).

@@ -1,7 +1,0 @@
-The USER-3SPN2 was updated on 1/12/14 to account for a typo in the spreadsheet used to obtain
-the CG coordinates of the C site.
-
-DSIM_ICNF/wrte_lammps.c and pair_3spn2.cpp were changed reflect these changes.
-
-This does not change the results of the previous version of the model, as the forcefield and
-topology were always self-consistent.
