@@ -29,6 +29,7 @@ _df = 1 * unit.angstrom / unit.nanometer  # distance scaling factor
 _af = 1 * unit.degree / unit.radian  # angle scaling factor
 _complement = {'A': 'T', 'T': 'A', 'G': 'C', 'C': 'G'}
 _dnaResidues = ['DA', 'DC', 'DT', 'DG']
+_proteinResidues = ['IPR', 'IGL', 'NGP']
 xml = f'{__location__}/3SPN2.xml'
 
 
@@ -171,18 +172,27 @@ class DNA(object):
         self.configuration_file = configuration_file
         config = configparser.ConfigParser()
         config.read(configuration_file)
-        self.particle_definition = parseConfigTable(config['Particles'])
-        self.bond_definition = parseConfigTable(config['Bonds'])
-        self.angle_definition = parseConfigTable(config['Harmonic Angles'])
-        self.dihedral_definition = parseConfigTable(config['Dihedrals'])
-        self.stacking_definition = parseConfigTable(config['Base Stackings'])
-        self.pair_definition = parseConfigTable(config['Base Pairs'])
-        self.cross_definition = parseConfigTable(config['Cross Stackings'])
+
+        # Parse all sections of the configuration file
+        self.config = {}
+        for c in config.sections():
+            self.config.update({c: parseConfigTable(config[c])})
+
+        # Assign main sections to variables
+        self.particle_definition = self.config['Particles']
+        self.bond_definition = self.config['Bonds']
+        self.angle_definition = self.config['Harmonic Angles']
+        self.dihedral_definition = self.config['Dihedrals']
+        self.stacking_definition = self.config['Base Stackings']
+        self.pair_definition = self.config['Base Pairs']
+        self.cross_definition = self.config['Cross Stackings']
+
 
     def computeTopology(self):
         """Creates tables of bonds, angles and dihedrals with their respective parameters (bonded interactions)"""
         # Parse configuration file if not already done
         try:
+            
             self.bond_definition
         except AttributeError:
             self.parseConfigurationFile()
@@ -390,11 +400,11 @@ class DNA(object):
                                 'resname', 'chainID', 'resSeq', 'iCode',
                                 'x', 'y', 'z', 'occupancy', 'tempFactor',
                                 'element', 'charge']]
-        #print(self.atoms.columns)
+        # print(self.atoms.columns)
         # self.atoms.loc[:, 'chain'] = self.atoms['chainID']
         # self.atoms.loc[:, 'residue'] = self.atoms['resSeq']
         self.atoms.loc[:, 'type'] = self.atoms['name']
-        #print(self.atoms.columns)
+        # print(self.atoms.columns)
         # Initialize the system from the pdb
         self.DNAtype = dna_type
         self.parseConfigurationFile()
@@ -479,7 +489,7 @@ class DNA(object):
         pass
 
     @classmethod
-    def fromSequence(cls, sequence, center=[0, 0, 0]):
+    def fromSequence(cls, sequence, center=(0, 0, 0)):
         """Initializes a DNA object from a DNA sequence"""
         # Make a possible structure
 
@@ -636,14 +646,23 @@ class System(simtk.openmm.System):
 class Force(object):
 
     def __init__(self, dna):
-        periodic = dna.periodic
+        self.periodic = dna.periodic
+        self.force = None
+        self.dna = dna
         # The patch allows the crosstacking force to run in OpenCL
         # introducing a small difference in the crosstacking energy
         self.OpenCLPatch = True
+
         # Define the dna force
-        self.reset(dna, periodic)
+        self.reset()
+
         # Define the interaction pairs
-        self.defineInteraction(dna)
+        self.defineInteraction()
+
+    def __getattr__(self, attr):
+        if attr in self.__dict__:
+            return getattr(self, attr)
+        return getattr(self.force, attr)
 
     def computeEnergy(self, system, trajectory):
         # Parse trajectory
@@ -673,23 +692,12 @@ class Force(object):
         # compute the energy for every frame
 
         # return a table with the energy
-
-    def setUpInteraction(self, periodic):
-        """ Creates a new force instance """
+    def reset(self):
         pass
-
-    def defineInteraction(self, dna):
-        """ Adds the parameter for the force """
+    def defineInteraction(self):
         pass
-
 
 class Bond3SPN2(Force, simtk.openmm.CustomBondForce):
-
-    def __getattr__(self, attr):
-        if attr in self.__dict__:
-            return getattr(self, attr)
-        return getattr(self.force, attr)
-
     def getParameterNames(self):
         self.perInteractionParameters = []
         self.GlobalParameters = []
@@ -699,18 +707,18 @@ class Bond3SPN2(Force, simtk.openmm.CustomBondForce):
             self.GlobalParameters += [self.force.getGlobalParameterName(i)]
         return [self.perInteractionParameters, self.GlobalParameters]
 
-    def reset(self, dna, periodic=False):
+    def reset(self):
         bondForce = simtk.openmm.CustomBondForce("Kb2*(r-r0)^2+Kb3*(r-r0)^3+Kb4*(r-r0)^4")
         bondForce.addPerBondParameter('r0')
         bondForce.addPerBondParameter('Kb2')
         bondForce.addPerBondParameter('Kb3')
         bondForce.addPerBondParameter('Kb4')
-        bondForce.setUsesPeriodicBoundaryConditions(periodic)
+        bondForce.setUsesPeriodicBoundaryConditions(self.periodic)
         bondForce.setForceGroup(3)
         self.force = bondForce
 
-    def defineInteraction(self, dna):
-        for i, b in dna.bonds.iterrows():
+    def defineInteraction(self):
+        for i, b in self.dna.bonds.iterrows():
             # Units converted from
             parameters = [b['r0'] * _df,
                           b['Kb2'] / _df ** 2 * _ef,
@@ -721,31 +729,21 @@ class Bond3SPN2(Force, simtk.openmm.CustomBondForce):
 
 class Angle3SPN2(Force, simtk.openmm.HarmonicAngleForce):
 
-    def __getattr__(self, attr):
-        if attr in self.__dict__:
-            return getattr(self, attr)
-        return getattr(self.force, attr)
-
-    def reset(self, dna, periodic=False):
+    def reset(self):
         angleForce = simtk.openmm.HarmonicAngleForce()
-        angleForce.setUsesPeriodicBoundaryConditions(periodic)
+        angleForce.setUsesPeriodicBoundaryConditions(self.periodic)
         angleForce.setForceGroup(4)
         self.force = angleForce
 
-    def defineInteraction(self, dna):
-        for i, a in dna.angles.iterrows():
+    def defineInteraction(self):
+        for i, a in self.dna.angles.iterrows():
             parameters = [a['t0'] * _af,
                           a['epsilon'] * 2]
             self.force.addAngle(int(a['aai']), int(a['aaj']), int(a['aak']), *parameters)
 
 
 class Stacking3SPN2(Force, simtk.openmm.CustomCompoundBondForce):
-    def __getattr__(self, attr):
-        if attr in self.__dict__:
-            return getattr(self, attr)
-        return getattr(self.force, attr)
-
-    def reset(self, dna, periodic=False):
+    def reset(self):
         stackingForce = simtk.openmm.CustomCompoundBondForce(3, """rep+f2*attr;
                                                                 rep=epsilon*(1-exp(-alpha*(dr)))^2*step(-dr);
                                                                 attr=epsilon*(1-exp(-alpha*(dr)))^2*step(dr)-epsilon;
@@ -755,7 +753,7 @@ class Stacking3SPN2(Force, simtk.openmm.CustomCompoundBondForce):
                                                                 pair2=step(dt+pi)*step(pi-dt);
                                                                 f=1-cos(dt)^2;
                                                                 dt=rng*(angle(p1,p2,p3)-t0);""")
-        stackingForce.setUsesPeriodicBoundaryConditions(periodic)
+        stackingForce.setUsesPeriodicBoundaryConditions(self.periodic)
         stackingForce.addPerBondParameter('epsilon')
         stackingForce.addPerBondParameter('sigma')
         stackingForce.addPerBondParameter('t0')
@@ -765,8 +763,8 @@ class Stacking3SPN2(Force, simtk.openmm.CustomCompoundBondForce):
         stackingForce.setForceGroup(5)
         self.force = stackingForce
 
-    def defineInteraction(self, dna):
-        for i, a in dna.stackings.iterrows():
+    def defineInteraction(self):
+        for i, a in self.dna.stackings.iterrows():
             parameters = [a['epsilon'] * _ef,
                           a['sigma'] * _df,
                           a['t0'] * _af,
@@ -776,17 +774,12 @@ class Stacking3SPN2(Force, simtk.openmm.CustomCompoundBondForce):
 
 
 class Dihedral3SPN2(Force, simtk.openmm.CustomTorsionForce):
-    def __getattr__(self, attr):
-        if attr in self.__dict__:
-            return getattr(self, attr)
-        return getattr(self.force, attr)
-
-    def reset(self, dna, periodic=False):
+    def reset(self):
         dihedralForce = simtk.openmm.CustomTorsionForce("""K_periodic*(1-cs)-K_gaussian*exp(-atan(tan(dt))^2/2/sigma^2);
                                                       cs=cos(dt);
                                                       dt=theta-t0""")
         # dihedralForce=simtk.openmm.CustomTorsionForce("theta/60.")
-        dihedralForce.setUsesPeriodicBoundaryConditions(periodic)
+        dihedralForce.setUsesPeriodicBoundaryConditions(self.periodic)
         dihedralForce.addPerTorsionParameter('K_periodic')
         dihedralForce.addPerTorsionParameter('K_gaussian')
         dihedralForce.addPerTorsionParameter('sigma')
@@ -795,8 +788,8 @@ class Dihedral3SPN2(Force, simtk.openmm.CustomTorsionForce):
         dihedralForce.setForceGroup(6)
         self.force = dihedralForce
 
-    def defineInteraction(self, dna):
-        for i, a in dna.dihedrals.iterrows():
+    def defineInteraction(self):
+        for i, a in self.dna.dihedrals.iterrows():
             parameters = [a['K_dihedral'] * _ef,
                           a['K_gaussian'] * _ef,
                           a['sigma'],
@@ -806,12 +799,7 @@ class Dihedral3SPN2(Force, simtk.openmm.CustomTorsionForce):
 
 
 class BasePair3SPN2(Force, simtk.openmm.CustomHbondForce):
-    def __getattr__(self, attr):
-        if attr in self.__dict__:
-            return getattr(self, attr)
-        return getattr(self.force, attr)
-
-    def reset(self, dna, periodic=False):
+    def reset(self):
         def basePairForce():
             pairForce = simtk.openmm.CustomHbondForce('''temp;temp=rep+1/2*(1+cos(dphi))*fdt1*fdt2*attr;
                                                          rep  = epsilon*(1-exp(-alpha*dr))^2*(1-step(dr));
@@ -828,7 +816,7 @@ class BasePair3SPN2(Force, simtk.openmm.CustomHbondForce):
                                                          dr    = distance(d1,a1)-sigma;
                                                          dt1   = rng*(angle(d2,d1,a1)-t01);
                                                          dt2   = rng*(angle(a2,a1,d1)-t02);''')
-            if periodic:
+            if self.periodic:
                 pairForce.setNonbondedMethod(pairForce.CutoffPeriodic)
             else:
                 pairForce.setNonbondedMethod(pairForce.CutoffNonPeriodic)
@@ -846,18 +834,18 @@ class BasePair3SPN2(Force, simtk.openmm.CustomHbondForce):
             return pairForce
 
         basePairForces = {}
-        pair_definition = dna.pair_definition[dna.pair_definition['DNA'] == dna.DNAtype]
+        pair_definition = self.dna.pair_definition[self.dna.pair_definition['DNA'] == self.dna.DNAtype]
         for i, pair in pair_definition.iterrows():
             basePairForces.update({i: basePairForce()})
         self.forces = basePairForces
 
-    def defineInteraction(self, dna):
-        pair_definition = dna.pair_definition[dna.pair_definition['DNA'] == dna.DNAtype]
-        is_dna = dna.atoms['resname'].isin(_dnaResidues)
+    def defineInteraction(self):
+        pair_definition = self.dna.pair_definition[self.dna.pair_definition['DNA'] == self.dna.DNAtype]
+        is_dna = self.dna.atoms['resname'].isin(_dnaResidues)
 
         for i, pair in pair_definition.iterrows():
-            D1 = list(dna.atoms[(dna.atoms['name'] == pair['Base1']) & is_dna].index)
-            A1 = list(dna.atoms[(dna.atoms['name'] == pair['Base2']) & is_dna].index)
+            D1 = list(self.dna.atoms[(self.dna.atoms['name'] == pair['Base1']) & is_dna].index)
+            A1 = list(self.dna.atoms[(self.dna.atoms['name'] == pair['Base2']) & is_dna].index)
 
             D2 = [j - 1 for j in D1]
             A2 = [j - 1 for j in A1]
@@ -880,12 +868,11 @@ class BasePair3SPN2(Force, simtk.openmm.CustomHbondForce):
                 self.forces[i].addAcceptor(a1, a2, a2)
 
             # Exclude interactions
-            atoms = dna.atoms.copy()
+            atoms = self.dna.atoms.copy()
             atoms.loc[D1, 'donor_id'] = [i for i in range(len(D1))]
             atoms.loc[A1, 'aceptor_id'] = [i for i in range(len(A1))]
-            atoms.loc[D1 + A1]
 
-            interaction = np.zeros([len(dna.atoms.resSeq.unique()) // 2, len(dna.atoms.resSeq.unique()) // 2])
+            interaction = np.zeros([len(self.dna.atoms.resSeq.unique()) // 2, len(self.dna.atoms.resSeq.unique()) // 2])
             interaction[:, :] = 1
             for k, chain in atoms.loc[D1 + A1].groupby('chainID'):
                 dds = chain.donor_id.dropna()
@@ -910,12 +897,7 @@ class BasePair3SPN2(Force, simtk.openmm.CustomHbondForce):
 
 
 class CrossStacking3SPN2(Force):
-    def __getattr__(self, attr):
-        if attr in self.__dict__:
-            return getattr(self, attr)
-        return getattr(self.force, attr)
-
-    def reset(self, dna, periodic=False):
+    def reset(self):
         def crossStackingForce(parametersOnDonor=False):
             if self.OpenCLPatch:
                 # Divide the energy over two to make the interaction symetric
@@ -941,7 +923,7 @@ class CrossStacking3SPN2(Force):
                                                         t1       = angle(d2,d1,a1);
                                                         t2       = angle(d1,a1,a2);
                                                         phi      = dihedral(d2,d1,a1,a2);''')
-            if periodic:
+            if self.periodic:
                 crossForce.setNonbondedMethod(crossForce.CutoffPeriodic)
             else:
                 crossForce.setNonbondedMethod(crossForce.CutoffNonPeriodic)
@@ -961,36 +943,36 @@ class CrossStacking3SPN2(Force):
             crossStackingForces.update({base: (crossStackingForce(), crossStackingForce())})
         self.crossStackingForces = crossStackingForces
 
-    def defineInteraction(self, dna, patch=True):
+    def defineInteraction(self):
         # Donators
-        bases = np.array(dna.atoms[dna.atoms['name'].isin(['A', 'T', 'G', 'C'])].index)
-        D1 = dna.atoms.reindex(bases)
-        D2 = dna.atoms.reindex(bases - 1)
-        D3 = dna.atoms.reindex(bases + 3)
-        A1 = dna.atoms.reindex(bases)
-        A2 = dna.atoms.reindex(bases - 1)
-        A3 = dna.atoms.reindex(bases - 3)
+        bases = np.array(self.dna.atoms[self.dna.atoms['name'].isin(['A', 'T', 'G', 'C'])].index)
+        D1 = self.dna.atoms.reindex(bases)
+        D2 = self.dna.atoms.reindex(bases - 1)
+        D3 = self.dna.atoms.reindex(bases + 3)
+        A1 = self.dna.atoms.reindex(bases)
+        A2 = self.dna.atoms.reindex(bases - 1)
+        A3 = self.dna.atoms.reindex(bases - 3)
 
         # Select only bases where the other atoms exist
         D2.index = D1.index
         D3.index = D1.index
         temp = pandas.concat([D1, D2, D3], axis=1, keys=['D1', 'D2', 'D3'])
         sel = np.array(temp[temp['D3', 'name'].isin(['A', 'T', 'G', 'C']) & temp['D2', 'name'].isin(['S'])].index)
-        D1 = dna.atoms.reindex(sel)
-        D2 = dna.atoms.reindex(sel - 1)
-        D3 = dna.atoms.reindex(sel + 3)
+        D1 = self.dna.atoms.reindex(sel)
+        D2 = self.dna.atoms.reindex(sel - 1)
+        D3 = self.dna.atoms.reindex(sel + 3)
 
         # Aceptors
         A2.index = A1.index
         A3.index = A1.index
         temp = pandas.concat([A1, A2, A3], axis=1, keys=['A1', 'A2', 'A3'])
         sel = np.array(temp[temp['A3', 'name'].isin(['A', 'T', 'G', 'C']) & temp['A2', 'name'].isin(['S'])].index)
-        A1 = dna.atoms.reindex(sel)
-        A2 = dna.atoms.reindex(sel - 1)
-        A3 = dna.atoms.reindex(sel - 3)
+        A1 = self.dna.atoms.reindex(sel)
+        A2 = self.dna.atoms.reindex(sel - 1)
+        A3 = self.dna.atoms.reindex(sel - 3)
 
         # Parameters
-        cross_definition = dna.cross_definition[dna.cross_definition['DNA'] == dna.DNAtype].copy()
+        cross_definition = self.dna.cross_definition[self.dna.cross_definition['DNA'] == self.dna.DNAtype].copy()
         i = [a for a in zip(cross_definition['Base_d1'], cross_definition['Base_a1'], cross_definition['Base_a3'])]
         cross_definition.index = i
 
@@ -1055,7 +1037,7 @@ class CrossStacking3SPN2(Force):
                         maxn = 6
                     else:
                         maxn = 9
-                    if (dna.atoms.at[i, 'chainID'] == dna.atoms.at[j, 'chainID'] and abs(i - j) <= maxn) or \
+                    if (self.dna.atoms.at[i, 'chainID'] == self.dna.atoms.at[j, 'chainID'] and abs(i - j) <= maxn) or \
                             (not self.OpenCLPatch and i > j):
                         c1.addExclusion(ii, jj)
                         c2.addExclusion(jj, ii)
@@ -1064,6 +1046,16 @@ class CrossStacking3SPN2(Force):
         for c1, c2 in self.crossStackingForces.values():
             system.addForce(c1)
             system.addForce(c2)
+
+    def getForceGroup(self):
+        fg = 0
+        for c1, c2 in self.crossStackingForces.values():
+            fg = c1.getForceGroup()
+            break
+        for c1, c2 in self.crossStackingForces.values():
+            assert fg == c1.getForceGroup()
+            assert fg == c2.getForceGroup()
+        return fg
 
 
 def addNonBondedExclusions(dna, force):
@@ -1076,7 +1068,7 @@ def addNonBondedExclusions(dna, force):
         # Neighboring residues
         if atom_a['chainID'] == atom_b['chainID'] and (atom_a.resSeq - atom_b.resSeq <= 1):
             force.addExclusion(i, j)
-            print(i, j)
+            #print(i, j)
         # Base-pair residues
         elif (atom_a['name'] in _complement.keys()) and (atom_b['name'] in _complement.keys()) and (
                 atom_a['name'] == _complement[atom_b['name']]):
@@ -1085,12 +1077,7 @@ def addNonBondedExclusions(dna, force):
 
 
 class Exclusion3SPN2(Force, simtk.openmm.CustomNonbondedForce):
-    def __getattr__(self, attr):
-        if attr in self.__dict__:
-            return getattr(self, attr)
-        return getattr(self.force, attr)
-
-    def reset(self, dna, periodic=False):
+    def reset(self):
         exclusionForce = simtk.openmm.CustomNonbondedForce("""energy;
                                                             energy=(epsilon*((sigma/r)^12-2*(sigma/r)^6)+epsilon)*step(sigma-r);
                                                             sigma=0.5*(sigma1+sigma2); 
@@ -1099,21 +1086,23 @@ class Exclusion3SPN2(Force, simtk.openmm.CustomNonbondedForce):
         exclusionForce.addPerParticleParameter('sigma')
         exclusionForce.setCutoffDistance(1.8)
         exclusionForce.setForceGroup(9)  # There can not be multiple cutoff distance on the same force group
-        if periodic:
+        if self.periodic:
             exclusionForce.setNonbondedMethod(exclusionForce.CutoffPeriodic)
         else:
             exclusionForce.setNonbondedMethod(exclusionForce.CutoffNonPeriodic)
         self.force = exclusionForce
 
-    def defineInteraction(self, dna):
+    def defineInteraction(self):
         # addParticles
-        particle_definition = dna.particle_definition[dna.particle_definition['DNA'] == dna.DNAtype]
+        particle_definition = self.dna.particle_definition[self.dna.particle_definition['DNA'] == self.dna.DNAtype]
         particle_definition.index = particle_definition.name
+
+        # Reduces or increases the cutoff to the maximum particle radius
         self.force.setCutoffDistance(particle_definition.radius.max() * _df)
 
         # Select only dna atoms
-        is_dna = dna.atoms['resname'].isin(_dnaResidues)
-        atoms = dna.atoms.copy()
+        is_dna = self.dna.atoms['resname'].isin(_dnaResidues)
+        atoms = self.dna.atoms.copy()
         atoms['is_dna'] = is_dna
         for i, atom in atoms.iterrows():
             if atom.is_dna:
@@ -1140,12 +1129,7 @@ class Exclusion3SPN2(Force, simtk.openmm.CustomNonbondedForce):
 
 
 class Electrostatics3SPN2(Force, simtk.openmm.CustomNonbondedForce):
-    def __getattr__(self, attr):
-        if attr in self.__dict__:
-            return getattr(self, attr)
-        return getattr(self.force, attr)
-
-    def reset(self, dna, periodic=False):
+    def reset(self):
         T = 300 * unit.kelvin
         C = 100 * unit.millimolar
         e = 249.4 - 0.788 * (T / unit.kelvin) + 7.2E-4 * (T / unit.kelvin) ** 2
@@ -1170,21 +1154,21 @@ class Electrostatics3SPN2(Force, simtk.openmm.CustomNonbondedForce):
         electrostaticForce.addGlobalParameter('denominator', denominator)
 
         electrostaticForce.setCutoffDistance(5)
-        if periodic:
+        if self.periodic:
             electrostaticForce.setNonbondedMethod(electrostaticForce.CutoffPeriodic)
         else:
             electrostaticForce.setNonbondedMethod(electrostaticForce.CutoffNonPeriodic)
         electrostaticForce.setForceGroup(10)
         self.force = electrostaticForce
 
-    def defineInteraction(self, dna):
+    def defineInteraction(self):
         # addParticles
-        particle_definition = dna.particle_definition[dna.particle_definition['DNA'] == dna.DNAtype]
+        particle_definition = self.dna.particle_definition[self.dna.particle_definition['DNA'] == self.dna.DNAtype]
         particle_definition.index = particle_definition.name
 
         # Select only dna atoms
-        is_dna = dna.atoms['resname'].isin(_dnaResidues)
-        atoms = dna.atoms.copy()
+        is_dna = self.dna.atoms['resname'].isin(_dnaResidues)
+        atoms = self.dna.atoms.copy()
         atoms['is_dna'] = is_dna
 
         for i, atom in atoms.iterrows():
@@ -1210,18 +1194,100 @@ class Electrostatics3SPN2(Force, simtk.openmm.CustomNonbondedForce):
                 self.force.addExclusion(i, j)
 
 
-class ElectrostaticProteinDNA(Electrostatics3SPN2):
-    def defineInteraction(self):
-        pass
-        # Read parameters from the configuration file
-        # Add interactions from interaction Groups
+class ProteinDNAForce(Force):
+    def __init__(self, dna, protein):
+        self.protein = protein
+        super().__init__(dna)
 
 
-class ExclusionProteinDNA:
+class ExclusionProteinDNA(ProteinDNAForce,Exclusion3SPN2):
+    def reset(self):
+        super().reset()
+        self.force.setForceGroup(2)
+
     def defineInteraction(self):
-        pass
-        # Read parameters from the configuration file
-        # Add interactions from interaction Groups
+        # Merge DNA and protein particle definitions
+        dna_particle_definition = self.dna.particle_definition[self.dna.particle_definition['DNA'] == self.dna.DNAtype].copy()
+        dna_particle_definition.loc[:, 'molecule'] = 'DNA'
+        protein_particle_definition = self.dna.config['Protein Particles']
+        protein_particle_definition.loc[:, 'molecule'] = 'protein'
+        particle_definition = pandas.concat([dna_particle_definition, protein_particle_definition], sort=False)
+        particle_definition.index = particle_definition.molecule + particle_definition.name
+
+        self.force.setCutoffDistance(particle_definition.radius.max() * _df)
+        # Select only dna atoms
+        is_dna = self.dna.atoms['resname'].isin(_dnaResidues)
+        is_protein = self.dna.atoms['resname'].isin(_proteinResidues)
+        atoms = self.dna.atoms.copy()
+        atoms['is_dna'] = is_dna
+        atoms['is_protein'] = is_protein
+        DNA_list = []
+        protein_list = []
+        for i, atom in atoms.iterrows():
+            if atom.is_dna:
+                param = particle_definition.loc['DNA' + atom['name']]
+                parameters = [param.epsilon * _ef,
+                              param.radius * _df]
+                DNA_list += [i]
+            elif atom.is_protein:
+                param = particle_definition.loc['protein' + atom['name']]
+                parameters = [param.epsilon * _ef,
+                              param.radius * _df]
+                protein_list += [i]
+            else:
+                print(f'Residue {i} not included in protein-DNA interactions')
+                parameters = [0, .1]
+            self.force.addParticle(parameters)
+        self.force.addInteractionGroup(DNA_list, protein_list)
+
+
+class ElectrostaticsProteinDNA(Electrostatics3SPN2, ProteinDNAForce):
+    def reset(self):
+        super().reset()
+        self.force.setForceGroup(1)
+
+    def defineInteraction(self):
+        # Merge DNA and protein particle definitions
+        dna_particle_definition = self.dna.particle_definition[self.dna.particle_definition['DNA'] == self.dna.DNAtype].copy()
+        dna_particle_definition.loc[:, 'molecule'] = 'DNA'
+        protein_particle_definition = self.dna.config['Protein Particles']
+        protein_particle_definition.loc[:, 'molecule'] = 'protein'
+        particle_definition = pandas.concat([dna_particle_definition, protein_particle_definition], sort=False)
+        particle_definition.index = particle_definition.molecule + particle_definition.name
+
+        # Open Sequence dependent electrostatics
+        sequence_electrostatics = self.dna.config['Sequence dependent electrostatics']
+        sequence_electrostatics.index = sequence_electrostatics.resname
+
+        # Select only dna and protein atoms
+        is_dna = self.protein.atoms['resname'].isin(_dnaResidues)
+        is_protein = self.protein.atoms['resname'].isin(_proteinResidues)
+        atoms = self.protein.atoms.copy()
+        atoms['is_dna'] = is_dna
+        atoms['is_protein'] = is_protein
+        DNA_list = []
+        protein_list = []
+
+        for i, atom in atoms.iterrows():
+            if atom.is_dna:
+                param = particle_definition.loc['DNA' + atom['name']]
+                charge = param.charge
+                parameters = [charge]
+                if charge != 0:
+                    DNA_list += [i]
+            elif atom.is_protein:
+                atom_param = particle_definition.loc['protein' + atom['name']]
+                seq_param = sequence_electrostatics.loc[atom.real_resname]
+                charge = atom_param.charge * seq_param.charge
+                parameters = [charge]
+                if charge != 0:
+                    protein_list += [i]
+            else:
+                print(f'Residue {i} not included in protein-DNA electrostatics')
+                parameters = [0]  # No charge if it is not DNA
+            # print (i,parameters)
+            self.force.addParticle(parameters)
+        self.force.addInteractionGroup(DNA_list, protein_list)
 
 
 # Unit testing
