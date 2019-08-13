@@ -662,7 +662,10 @@ class Force(object):
     def __getattr__(self, attr):
         if attr in self.__dict__:
             return getattr(self, attr)
-        return getattr(self.force, attr)
+        elif 'force' in self.__dict__:
+            return getattr(self.force, attr)
+        else:
+            raise AttributeError(f"type object {str(self)} has no attribute {str(attr)}")
 
     def computeEnergy(self, system, trajectory):
         # Parse trajectory
@@ -692,12 +695,13 @@ class Force(object):
         # compute the energy for every frame
 
         # return a table with the energy
-    def reset(self):
-        pass
-    def defineInteraction(self):
-        pass
+
 
 class Bond3SPN2(Force, simtk.openmm.CustomBondForce):
+    def __init__(self, dna):
+        self.force_group = 6
+        super().__init__(dna)
+
     def getParameterNames(self):
         self.perInteractionParameters = []
         self.GlobalParameters = []
@@ -714,7 +718,7 @@ class Bond3SPN2(Force, simtk.openmm.CustomBondForce):
         bondForce.addPerBondParameter('Kb3')
         bondForce.addPerBondParameter('Kb4')
         bondForce.setUsesPeriodicBoundaryConditions(self.periodic)
-        bondForce.setForceGroup(3)
+        bondForce.setForceGroup(self.force_group)
         self.force = bondForce
 
     def defineInteraction(self):
@@ -729,10 +733,14 @@ class Bond3SPN2(Force, simtk.openmm.CustomBondForce):
 
 class Angle3SPN2(Force, simtk.openmm.HarmonicAngleForce):
 
+    def __init__(self,dna):
+        self.force_group = 7
+        super().__init__(dna)
+
     def reset(self):
         angleForce = simtk.openmm.HarmonicAngleForce()
         angleForce.setUsesPeriodicBoundaryConditions(self.periodic)
-        angleForce.setForceGroup(4)
+        angleForce.setForceGroup(self.force_group)
         self.force = angleForce
 
     def defineInteraction(self):
@@ -743,6 +751,10 @@ class Angle3SPN2(Force, simtk.openmm.HarmonicAngleForce):
 
 
 class Stacking3SPN2(Force, simtk.openmm.CustomCompoundBondForce):
+    def __init__(self,dna):
+        self.force_group = 8
+        super().__init__(dna)
+
     def reset(self):
         stackingForce = simtk.openmm.CustomCompoundBondForce(3, """rep+f2*attr;
                                                                 rep=epsilon*(1-exp(-alpha*(dr)))^2*step(-dr);
@@ -760,7 +772,7 @@ class Stacking3SPN2(Force, simtk.openmm.CustomCompoundBondForce):
         stackingForce.addPerBondParameter('alpha')
         stackingForce.addPerBondParameter('rng')
         stackingForce.addGlobalParameter('pi', np.pi)
-        stackingForce.setForceGroup(5)
+        stackingForce.setForceGroup(self.force_group)
         self.force = stackingForce
 
     def defineInteraction(self):
@@ -774,6 +786,10 @@ class Stacking3SPN2(Force, simtk.openmm.CustomCompoundBondForce):
 
 
 class Dihedral3SPN2(Force, simtk.openmm.CustomTorsionForce):
+    def __init__(self,dna):
+        self.force_group = 9
+        super().__init__(dna)
+
     def reset(self):
         dihedralForce = simtk.openmm.CustomTorsionForce("""K_periodic*(1-cs)-K_gaussian*exp(-atan(tan(dt))^2/2/sigma^2);
                                                       cs=cos(dt);
@@ -785,7 +801,7 @@ class Dihedral3SPN2(Force, simtk.openmm.CustomTorsionForce):
         dihedralForce.addPerTorsionParameter('sigma')
         dihedralForce.addPerTorsionParameter('t0')
         dihedralForce.addGlobalParameter('pi', np.pi)
-        dihedralForce.setForceGroup(6)
+        dihedralForce.setForceGroup(self.force_group)
         self.force = dihedralForce
 
     def defineInteraction(self):
@@ -799,6 +815,10 @@ class Dihedral3SPN2(Force, simtk.openmm.CustomTorsionForce):
 
 
 class BasePair3SPN2(Force, simtk.openmm.CustomHbondForce):
+    def __init__(self,dna):
+        self.force_group = 10
+        super().__init__(dna)
+
     def reset(self):
         def basePairForce():
             pairForce = simtk.openmm.CustomHbondForce('''temp;temp=rep+1/2*(1+cos(dphi))*fdt1*fdt2*attr;
@@ -830,7 +850,7 @@ class BasePair3SPN2(Force, simtk.openmm.CustomHbondForce):
             pairForce.addPerDonorParameter('alpha')
             pairForce.addGlobalParameter('pi', np.pi)
             self.force = pairForce
-            pairForce.setForceGroup(7)
+            pairForce.setForceGroup(self.force_group)
             return pairForce
 
         basePairForces = {}
@@ -897,6 +917,10 @@ class BasePair3SPN2(Force, simtk.openmm.CustomHbondForce):
 
 
 class CrossStacking3SPN2(Force):
+    def __init__(self,dna):
+        self.force_group = 11
+        super().__init__(dna)
+
     def reset(self):
         def crossStackingForce(parametersOnDonor=False):
             if self.OpenCLPatch:
@@ -935,7 +959,7 @@ class CrossStacking3SPN2(Force):
                 else:
                     crossForce.addPerAcceptorParameter(p)
             crossForce.addGlobalParameter('pi', np.pi)
-            crossForce.setForceGroup(8)
+            crossForce.setForceGroup(self.force_group)
             return crossForce
 
         crossStackingForces = {}
@@ -1077,6 +1101,13 @@ def addNonBondedExclusions(dna, force):
 
 
 class Exclusion3SPN2(Force, simtk.openmm.CustomNonbondedForce):
+    def __init__(self,dna):
+        try:
+            self.force_group
+        except AttributeError:
+            self.force_group = 12
+        super().__init__(dna)
+
     def reset(self):
         exclusionForce = simtk.openmm.CustomNonbondedForce("""energy;
                                                             energy=(epsilon*((sigma/r)^12-2*(sigma/r)^6)+epsilon)*step(sigma-r);
@@ -1085,7 +1116,7 @@ class Exclusion3SPN2(Force, simtk.openmm.CustomNonbondedForce):
         exclusionForce.addPerParticleParameter('epsilon')
         exclusionForce.addPerParticleParameter('sigma')
         exclusionForce.setCutoffDistance(1.8)
-        exclusionForce.setForceGroup(9)  # There can not be multiple cutoff distance on the same force group
+        exclusionForce.setForceGroup(self.force_group)  # There can not be multiple cutoff distance on the same force group
         if self.periodic:
             exclusionForce.setNonbondedMethod(exclusionForce.CutoffPeriodic)
         else:
@@ -1129,6 +1160,13 @@ class Exclusion3SPN2(Force, simtk.openmm.CustomNonbondedForce):
 
 
 class Electrostatics3SPN2(Force, simtk.openmm.CustomNonbondedForce):
+    def __init__(self, dna):
+        try:
+            self.force_group
+        except AttributeError:
+            self.force_group = 13
+        super().__init__(dna)
+
     def reset(self):
         T = 300 * unit.kelvin
         C = 100 * unit.millimolar
@@ -1158,7 +1196,7 @@ class Electrostatics3SPN2(Force, simtk.openmm.CustomNonbondedForce):
             electrostaticForce.setNonbondedMethod(electrostaticForce.CutoffPeriodic)
         else:
             electrostaticForce.setNonbondedMethod(electrostaticForce.CutoffNonPeriodic)
-        electrostaticForce.setForceGroup(10)
+        electrostaticForce.setForceGroup(self.force_group)
         self.force = electrostaticForce
 
     def defineInteraction(self):
@@ -1200,10 +1238,14 @@ class ProteinDNAForce(Force):
         super().__init__(dna)
 
 
-class ExclusionProteinDNA(ProteinDNAForce,Exclusion3SPN2):
+class ExclusionProteinDNA(ProteinDNAForce, Exclusion3SPN2):
+    def __init__(self, dna, protein):
+        self.force_group = 14
+        super().__init__(dna, protein)
+
     def reset(self):
         super().reset()
-        self.force.setForceGroup(2)
+        self.force.setForceGroup(self.force_group)
 
     def defineInteraction(self):
         # Merge DNA and protein particle definitions
@@ -1241,10 +1283,14 @@ class ExclusionProteinDNA(ProteinDNAForce,Exclusion3SPN2):
         self.force.addInteractionGroup(DNA_list, protein_list)
 
 
-class ElectrostaticsProteinDNA(Electrostatics3SPN2, ProteinDNAForce):
+class ElectrostaticsProteinDNA(ProteinDNAForce, Electrostatics3SPN2):
+    def __init__(self, dna, protein):
+        self.force_group = 15
+        super().__init__(dna, protein)
+
     def reset(self):
         super().reset()
-        self.force.setForceGroup(1)
+        self.force.setForceGroup(self.force_group)
 
     def defineInteraction(self):
         # Merge DNA and protein particle definitions
