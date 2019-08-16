@@ -367,6 +367,7 @@ class DNA(object):
                 assert len(pdb_line) == 80, 'An item in the atom table is longer than expected'
                 pdb.write(pdb_line + '\n')
         self.pdb_file = pdb_file
+        return pdb_file
 
     @classmethod
     def fromCoarsePDB(cls, pdb_file, dna_type='B_curved'):
@@ -474,7 +475,7 @@ class DNA(object):
         self.DNAtype = dna_type
         self.parseConfigurationFile()
         self.computeTopology()
-        self.pdb_file = pdb_file
+        self.writePDB()
         return self
 
     @classmethod
@@ -558,6 +559,11 @@ class System(simtk.openmm.System):
         self.periodicBox = periodicBox
         if periodicBox is not None:
             self._wrapped_system.setDefaultPeriodicBoxVectors(*np.diag(self.periodic_box))
+            self.dna.periodic = True
+        elif periodicBox is None and self.dna.periodic == True:
+            self.dna.periodic = False
+            print('Periodic boundary conditions not defined, system would be non periodic')
+        self.force_groups = {}
 
     def __getattr__(self, attr):
         if attr in self.__dict__:
@@ -581,21 +587,14 @@ class System(simtk.openmm.System):
             assert len(self.getForces()) <= 1, 'Not all the forces were removed'
 
     def add3SPN2forces(self):
-        forces = dict(Bond=Bond3SPN2,
-                      Angle=Angle3SPN2,
-                      Stacking=Stacking3SPN2,
-                      Dihedral=Dihedral3SPN2,
-                      BasePair=BasePair3SPN2,
-                      CrossStacking=CrossStacking3SPN2,
-                      Exclusion=Exclusion3SPN2,
-                      Electrostatics=Electrostatics3SPN2)
         for force_name in forces:
-
+            print(force_name)
             force = forces[force_name](self.dna)
-            if force_name == 'CrossStacking':
+            if force_name in ['BasePair', 'CrossStacking']:
                 force.addForce(self)
             else:
                 self.addForce(force)
+            self.force_groups.update({force_name: force.getForceGroup()})
 
     def initializeMD(self, temperature=300 * unit.kelvin, platform_name='Reference'):
         """Starts a sample simulation using the selected system"""
@@ -697,7 +696,7 @@ class Force(object):
         # return a table with the energy
 
 
-class Bond3SPN2(Force, simtk.openmm.CustomBondForce):
+class Bond(Force, simtk.openmm.CustomBondForce):
     def __init__(self, dna):
         self.force_group = 6
         super().__init__(dna)
@@ -731,7 +730,7 @@ class Bond3SPN2(Force, simtk.openmm.CustomBondForce):
             self.force.addBond(int(b['aai']), int(b['aaj']), parameters)
 
 
-class Angle3SPN2(Force, simtk.openmm.HarmonicAngleForce):
+class Angle(Force, simtk.openmm.HarmonicAngleForce):
 
     def __init__(self,dna):
         self.force_group = 7
@@ -750,7 +749,7 @@ class Angle3SPN2(Force, simtk.openmm.HarmonicAngleForce):
             self.force.addAngle(int(a['aai']), int(a['aaj']), int(a['aak']), *parameters)
 
 
-class Stacking3SPN2(Force, simtk.openmm.CustomCompoundBondForce):
+class Stacking(Force, simtk.openmm.CustomCompoundBondForce):
     def __init__(self,dna):
         self.force_group = 8
         super().__init__(dna)
@@ -785,7 +784,7 @@ class Stacking3SPN2(Force, simtk.openmm.CustomCompoundBondForce):
             self.force.addBond([a['aai'], a['aaj'], a['aak']], parameters)
 
 
-class Dihedral3SPN2(Force, simtk.openmm.CustomTorsionForce):
+class Dihedral(Force, simtk.openmm.CustomTorsionForce):
     def __init__(self,dna):
         self.force_group = 9
         super().__init__(dna)
@@ -814,7 +813,7 @@ class Dihedral3SPN2(Force, simtk.openmm.CustomTorsionForce):
             self.force.addTorsion(*particles, parameters)
 
 
-class BasePair3SPN2(Force, simtk.openmm.CustomHbondForce):
+class BasePair(Force, simtk.openmm.CustomHbondForce):
     def __init__(self,dna):
         self.force_group = 10
         super().__init__(dna)
@@ -916,7 +915,7 @@ class BasePair3SPN2(Force, simtk.openmm.CustomHbondForce):
             system.addForce(self.forces[f])
 
 
-class CrossStacking3SPN2(Force):
+class CrossStacking(Force):
     def __init__(self,dna):
         self.force_group = 11
         super().__init__(dna)
@@ -981,7 +980,10 @@ class CrossStacking3SPN2(Force):
         D2.index = D1.index
         D3.index = D1.index
         temp = pandas.concat([D1, D2, D3], axis=1, keys=['D1', 'D2', 'D3'])
-        sel = np.array(temp[temp['D3', 'name'].isin(['A', 'T', 'G', 'C']) & temp['D2', 'name'].isin(['S'])].index)
+        sel = np.array(temp[temp['D3', 'name'].isin(['A', 'T', 'G', 'C']) &           # D3 must be a base
+                            temp['D2', 'name'].isin(['S']) &                          # D2 must be a sugar
+                            (temp['D3', 'chainID'] == temp['D1', 'chainID']) &        # D3 must be in the same chain
+                            (temp['D2', 'chainID'] == temp['D1', 'chainID'])].index)  # D2 must be in the same chain
         D1 = self.dna.atoms.reindex(sel)
         D2 = self.dna.atoms.reindex(sel - 1)
         D3 = self.dna.atoms.reindex(sel + 3)
@@ -990,7 +992,10 @@ class CrossStacking3SPN2(Force):
         A2.index = A1.index
         A3.index = A1.index
         temp = pandas.concat([A1, A2, A3], axis=1, keys=['A1', 'A2', 'A3'])
-        sel = np.array(temp[temp['A3', 'name'].isin(['A', 'T', 'G', 'C']) & temp['A2', 'name'].isin(['S'])].index)
+        sel = np.array(temp[temp['A3', 'name'].isin(['A', 'T', 'G', 'C']) &           # A3 must be a base
+                            temp['A2', 'name'].isin(['S']) &                          # A2 must be a sugar
+                            (temp['A3', 'chainID'] == temp['A1', 'chainID']) &        # A3 must be in the same chain
+                            (temp['A2', 'chainID'] == temp['A1', 'chainID'])].index)  # A2 must be in the same chain
         A1 = self.dna.atoms.reindex(sel)
         A2 = self.dna.atoms.reindex(sel - 1)
         A3 = self.dna.atoms.reindex(sel - 3)
@@ -1021,6 +1026,7 @@ class CrossStacking3SPN2(Force):
             # print(param)
             c1.addDonor(d1, d2, d3)
             c2.addAcceptor(d1, d2, d3, parameters)
+            #print("Donor", d1t, d1, d2, d3)
             donors[d1t] += [d1]
 
         aceptors = {i: [] for i in ['A', 'T', 'G', 'C']}
@@ -1044,6 +1050,7 @@ class CrossStacking3SPN2(Force):
             # parameters=[param1['t03']*af,param1['T0CS_2']*af,param1['rng_cs2'],param1['rng_bp'],param1['eps_cs2']*ef,param1['alpha_cs2']/df,param1['Sigma_2']*df]
             c1.addAcceptor(a1, a2, a3, parameters)
             c2.addDonor(a1, a2, a3)
+            #print("Aceptor", a1t, a1, a2, a3)
             aceptors[_complement[a1t]] += [a1]
 
         # Exclusions
@@ -1082,25 +1089,26 @@ class CrossStacking3SPN2(Force):
         return fg
 
 
-def addNonBondedExclusions(dna, force):
+def addNonBondedExclusions(dna, force, OpenCLPatch=True):
     is_dna = dna.atoms['resname'].isin(_dnaResidues)
     atoms = dna.atoms.copy()
     selection = atoms[is_dna]
-    for (i, atom_a), (j, atom_b) in itertools.product(selection.iterrows(), repeat=2):
-        if j >= i:
-            continue
+    for (i, atom_a), (j, atom_b) in itertools.combinations(selection.iterrows(), r=2):
+        if j < i:
+            i, j = j, i
+            atom_a, atom_b = atom_b, atom_a
         # Neighboring residues
-        if atom_a['chainID'] == atom_b['chainID'] and (atom_a.resSeq - atom_b.resSeq <= 1):
+        if atom_a.chainID == atom_b.chainID and (abs(atom_a.resSeq - atom_b.resSeq) <= 1):
             force.addExclusion(i, j)
-            #print(i, j)
+            # print(i, j)
         # Base-pair residues
-        elif (atom_a['name'] in _complement.keys()) and (atom_b['name'] in _complement.keys()) and (
+        elif OpenCLPatch and (atom_a['name'] in _complement.keys()) and (atom_b['name'] in _complement.keys()) and (
                 atom_a['name'] == _complement[atom_b['name']]):
             force.addExclusion(i, j)
-            #print(i, j)
+            # print(i, j)
 
 
-class Exclusion3SPN2(Force, simtk.openmm.CustomNonbondedForce):
+class Exclusion(Force, simtk.openmm.CustomNonbondedForce):
     def __init__(self,dna):
         try:
             self.force_group
@@ -1146,20 +1154,10 @@ class Exclusion3SPN2(Force, simtk.openmm.CustomNonbondedForce):
             self.force.addParticle(parameters)
 
         # addExclusions
-        selection = atoms[is_dna]
-        for (i, atom_a), (j, atom_b) in itertools.product(selection.iterrows(), repeat=2):
-            if j >= i:
-                continue
-            # Neighboring residues
-            if atom_a['chainID'] == atom_b['chainID'] and (atom_a.resSeq - atom_b.resSeq <= 1):
-                self.force.addExclusion(i, j)
-            # Base-pair residues
-            elif (atom_a['name'] in _complement.keys()) and (atom_b['name'] in _complement.keys()) and (
-                    atom_a['name'] == _complement[atom_b['name']]):
-                self.force.addExclusion(i, j)
+        addNonBondedExclusions(self.dna, self.force)
 
 
-class Electrostatics3SPN2(Force, simtk.openmm.CustomNonbondedForce):
+class Electrostatics(Force, simtk.openmm.CustomNonbondedForce):
     def __init__(self, dna):
         try:
             self.force_group
@@ -1219,17 +1217,17 @@ class Electrostatics3SPN2(Force, simtk.openmm.CustomNonbondedForce):
             self.force.addParticle(parameters)
 
         # add neighbor exclusion
-        selection = atoms[is_dna]
-        for (i, a1), (j, a2) in itertools.product(selection.iterrows(), repeat=2):
-            if j >= i:
-                continue
-            if (a1.chainID == a2.chainID) and (abs(a1.resSeq - a2.resSeq) <= 1):
-                self.force.addExclusion(i, j)
-                # print (i,j,a1.chain,a2.chain,a1.resSeq,a2.resSeq,(a1.resSeq-a2.resSeq))
-            # All Non-bonded forces must have the same exclusions
-            elif self.OpenCLPatch and (a1['name'] in _complement.keys()) and (a2['name'] in _complement.keys()) and (
-                    a1['name'] == _complement[a2['name']]):
-                self.force.addExclusion(i, j)
+        addNonBondedExclusions(self.dna, self.force, self.OpenCLPatch)
+
+
+forces = dict(Bond=Bond,
+              Angle=Angle,
+              Stacking=Stacking,
+              Dihedral=Dihedral,
+              BasePair=BasePair,
+              CrossStacking=CrossStacking,
+              Exclusion=Exclusion,
+              Electrostatics=Electrostatics)
 
 
 class ProteinDNAForce(Force):
@@ -1238,7 +1236,7 @@ class ProteinDNAForce(Force):
         super().__init__(dna)
 
 
-class ExclusionProteinDNA(ProteinDNAForce, Exclusion3SPN2):
+class ExclusionProteinDNA(ProteinDNAForce, Exclusion):
     def __init__(self, dna, protein):
         self.force_group = 14
         super().__init__(dna, protein)
@@ -1282,8 +1280,11 @@ class ExclusionProteinDNA(ProteinDNAForce, Exclusion3SPN2):
             self.force.addParticle(parameters)
         self.force.addInteractionGroup(DNA_list, protein_list)
 
+        # addExclusions
+        addNonBondedExclusions(self.dna, self.force)
 
-class ElectrostaticsProteinDNA(ProteinDNAForce, Electrostatics3SPN2):
+
+class ElectrostaticsProteinDNA(ProteinDNAForce, Electrostatics):
     def __init__(self, dna, protein):
         self.force_group = 15
         super().__init__(dna, protein)
@@ -1334,6 +1335,9 @@ class ElectrostaticsProteinDNA(ProteinDNAForce, Electrostatics3SPN2):
             # print (i,parameters)
             self.force.addParticle(parameters)
         self.force.addInteractionGroup(DNA_list, protein_list)
+
+        # addExclusions
+        addNonBondedExclusions(self.dna, self.force)
 
 
 # Unit testing
@@ -1423,15 +1427,6 @@ def test_parse_log():
 
 class TestEnergies:
     """Tests that the energies are the same as the example outputs from lammps"""
-    force3SPN2 = dict(Bond=Bond3SPN2,
-                      Angle=Angle3SPN2,
-                      Stacking=Stacking3SPN2,
-                      Dihedral=Dihedral3SPN2,
-                      BasePair=BasePair3SPN2,
-                      CrossStacking=CrossStacking3SPN2,
-                      Exclusion=Exclusion3SPN2,
-                      Electrostatics=Electrostatics3SPN2)
-
     def _test_energy(self,
                      log_energy='E_bond',
                      log_file='Tests/adna/sim.log',
@@ -1446,7 +1441,7 @@ class TestEnergies:
         log = parse_log(log_file)
 
         self.system.clearForces()
-        f = self.force3SPN2[force]
+        f = forces[force]
         tempforce = f(self.dna)
         try:
             tempforce.addForce(self.system)
@@ -1476,6 +1471,59 @@ class TestEnergies:
                 print(j)
                 yield self._test_energy, test['Energy term'], f'{folder}/{test.Log}', f'{folder}/{test.Trajectory}',\
                       test['Name'], test['periodic size'], test['Platform'], self.dna, self.system
+
+    def _test_force(self,
+                     log_energy='E_bond',
+                     log_file='Tests/adna/sim.log',
+                     traj_file='Tests/adna/traj.xyz',
+                     force='Bond', periodic_size=94.2,
+                     platform_name='Reference',dna=None, system=None):
+        self.dna = dna
+        self.system = system
+        self.system.clearForces()
+        self.system.setDefaultPeriodicBoxVectors(*np.diag([2 * periodic_size / 10] * 3))
+
+        log = parse_log(log_file)
+
+        self.system.clearForces()
+        f = forces[force]
+        tempforce = f(self.dna)
+        try:
+            tempforce.addForce(self.system)
+        except AttributeError:
+            self.system.addForce(tempforce)
+        temperature = 300 * simtk.openmm.unit.kelvin
+        integrator = simtk.openmm.LangevinIntegrator(temperature, 1 / simtk.openmm.unit.picosecond,
+                                                     2 * simtk.openmm.unit.femtoseconds)
+        platform = simtk.openmm.Platform.getPlatformByName(platform_name)
+        simulation = simtk.openmm.app.Simulation(self.system.top, self.system, integrator, platform)
+        simulation.context.setPositions(self.system.coord.getPositions())
+        energy_unit = simtk.openmm.unit.kilojoule_per_mole
+        for i in range(10):
+            state = simulation.context.getState(getForces=True)
+            ff = state.getForces()
+            sf = (np.array(ff) ** 2).sum(axis=1) ** .5
+            nan_force_particles=0
+            for j, f in enumerate(sf):
+                if np.isnan(f.value_in_unit(simtk.unit.kilojoule_per_mole / simtk.unit.nanometer)):
+                    print(f"Particle {j + 1}/{len(sf)} has force {f} at step {i}")
+                    nan_force_particles += 1
+            simulation.step(1)
+        assert nan_force_particles == 0, "At least one particle has undefined force"
+
+    def test_forces(self):
+        test_sets = pandas.read_csv('Tests/test_cases.csv', comment='#')
+        for i, tests in test_sets.groupby(['Folder', 'DNA type']):
+            folder = i[0]
+            dna_type = i[1]
+            self.dna = DNA.fromXYZ(f'{folder}/in00_conf.xyz', dna_type)
+            self.system = System(self.dna)
+            for j, test in tests.iterrows():
+                print(j)
+                yield self._test_force, test['Energy term'], f'{folder}/{test.Log}', f'{folder}/{test.Trajectory}',\
+                      test['Name'], test['periodic size'], test['Platform'], self.dna, self.system
+
+
 
     def _test_energies_slow(self):
         test_sets = pandas.read_csv('Tests/test_cases.csv', comment='#')
