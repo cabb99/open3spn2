@@ -21,6 +21,7 @@ import os
 import simtk.openmm.app
 import pdbfixer
 import pandas
+import subprocess
 import nose
 
 __location__ = os.path.realpath(os.path.join(os.getcwd(), os.path.dirname(__file__)))
@@ -187,12 +188,75 @@ class DNA(object):
         self.pair_definition = self.config['Base Pairs']
         self.cross_definition = self.config['Cross Stackings']
 
+    def getSequences(self):
+        dna_data = self.atoms[self.atoms.resname.isin(_dnaResidues)].copy()
+        sequences = {}
+        for c, chain in dna_data.groupby('chainID'):
+            chain = chain.copy()
+            resix = chain.resSeq
+            res_unique = resix.unique()
+            # chain['resID'] = resix.replace(dict(zip(res_unique, range(len(res_unique)))))
+            sequences.update({(c, i): r.iloc[0]['resname'][1] for i, r in chain.groupby('resSeq')})
+        self.sequence = pandas.Series(sequences)
+        return self.sequence
 
-    def computeTopology(self):
+    def computeGeometry(self, sequence=None):
+        pair = self.config['Base Pair Geometry']
+        step = self.config['Base Step Geometry']
+        pair.index = pair['stea']
+        step.index = step['stea'] + step['steb']
+        data = []
+        _s = None
+        if sequence is None:
+            sequence = self.getSequences()
+        seq = ''.join(sequence.values)
+        for s in seq:
+            pair_s = pair.loc['A', ['shear', 'stretch', 'stagger', 'buckle', 'propeller', 'opening']]
+            if _s:
+                step_s = step.loc[_s + s, ['shift', 'slide', 'rise', 'tilt', 'roll', 'twist']]
+            else:
+                step_s = (step.loc['AA', ['shift', 'slide', 'rise', 'tilt', 'roll', 'twist']] + 100) * 0
+            data += [pandas.concat([pandas.Series([f'{s}-{_complement[s]}'], index=['Sequence']), pair_s, step_s])]
+            _s = s
+        data = pandas.concat(data, axis=1).T
+        with open('rebuild_x3dna_parameters.par', 'w+') as par:
+            par.write(f' {len(data)} # Number of base pairs\n')
+            par.write(f' 0 # local base-pair & step parameters\n')
+            par.write('#')
+            par.write(data.to_csv(sep=' ', index=False))
+        subprocess.check_output(['/home/cab22/Programs/X3DNA/x3dna-v2.3/bin/rebuild',
+                                 '-atomic', 'rebuild_x3dna_parameters.par',
+                                 'x3dna_template.pdb'])
+        template_dna = self.fromPDB('x3dna_template.pdb')
+        template = template_dna.atoms.copy()
+        try:
+            self.atoms
+        except AttributeError:
+            return template
+
+        template = template[template['chainID'] == 'A']
+        original = self.atoms.copy()
+        original.index = original['chainID'].astype(str) + '_' + original['resSeq'].astype(str) + '_' + original['name']
+        ii = []
+        for i, r in template.iterrows():
+            name = r['name']
+            seq_template = r['resname'][1:]
+            j = r['resSeq'] - 1
+            seq_seq = self.sequence.iloc[j]
+            assert seq_seq == seq_template
+            chain, resseq = self.sequence.index[j]
+            ii += [f'{chain}_{resseq}_{name}']
+        template.index = ii
+        merge = pandas.merge(original, template, left_index=True, right_index=True, how='left', suffixes=['_old', ''])
+        original[['x', 'y', 'z']] = merge[['x', 'y', 'z']]
+        original.index = self.atoms.index
+        return original
+
+    def computeTopology(self, template_from_structure=False):
         """Creates tables of bonds, angles and dihedrals with their respective parameters (bonded interactions)"""
         # Parse configuration file if not already done
         try:
-            
+
             self.bond_definition
         except AttributeError:
             self.parseConfigurationFile()
@@ -201,9 +265,14 @@ class DNA(object):
         if DNAtype not in self.angle_definition['DNA'].unique():
             raise DNATypeError(self)
 
-        #Rewrite index in case it is not ordered
+        # Rewrite index in case it is not ordered
         self.atoms.index = range(len(self.atoms))
 
+        # Compute B_curved geometry if needed
+        if DNAtype == 'B_curved' and template_from_structure:
+            self.template_atoms = self.computeGeometry()
+        else:
+            self.template_atoms = self.atoms
         # Make an index to build the topology
         index = {}
         cr_list = set()  # Chain residue list
@@ -241,8 +310,8 @@ class DNA(object):
 
         if DNAtype == 'B_curved':
             # Make default distances the same as the initial distance
-            x1 = self.atoms.loc[self.bonds['aai']][['x', 'y', 'z']]
-            x2 = self.atoms.loc[self.bonds['aaj']][['x', 'y', 'z']]
+            x1 = self.template_atoms.loc[self.bonds['aai']][['x', 'y', 'z']]
+            x2 = self.template_atoms.loc[self.bonds['aaj']][['x', 'y', 'z']]
             self.bonds['r0'] = np.diag(sdist.cdist(x1, x2))
 
         # Make a table with angles
@@ -275,9 +344,9 @@ class DNA(object):
 
         if DNAtype == 'B_curved':
             # Make initial angles the default angles
-            v1 = self.atoms.loc[self.angles['aai']].reset_index()[['x', 'y', 'z']]
-            v2 = self.atoms.loc[self.angles['aaj']].reset_index()[['x', 'y', 'z']]
-            v3 = self.atoms.loc[self.angles['aak']].reset_index()[['x', 'y', 'z']]
+            v1 = self.template_atoms.loc[self.angles['aai']].reset_index()[['x', 'y', 'z']]
+            v2 = self.template_atoms.loc[self.angles['aaj']].reset_index()[['x', 'y', 'z']]
+            v3 = self.template_atoms.loc[self.angles['aak']].reset_index()[['x', 'y', 'z']]
             a = v1 - v2
             a = np.array(a) / np.linalg.norm(a, keepdims=True, axis=1, )
             b = v3 - v2
@@ -326,10 +395,10 @@ class DNA(object):
         if DNAtype == 'B_curved':
             # Make initial dihedrals the default dihedrals
 
-            a1 = self.atoms.loc[self.dihedrals['aai']].reset_index()[['x', 'y', 'z']]
-            a2 = self.atoms.loc[self.dihedrals['aaj']].reset_index()[['x', 'y', 'z']]
-            a3 = self.atoms.loc[self.dihedrals['aak']].reset_index()[['x', 'y', 'z']]
-            a4 = self.atoms.loc[self.dihedrals['aal']].reset_index()[['x', 'y', 'z']]
+            a1 = self.template_atoms.loc[self.dihedrals['aai']].reset_index()[['x', 'y', 'z']]
+            a2 = self.template_atoms.loc[self.dihedrals['aaj']].reset_index()[['x', 'y', 'z']]
+            a3 = self.template_atoms.loc[self.dihedrals['aak']].reset_index()[['x', 'y', 'z']]
+            a4 = self.template_atoms.loc[self.dihedrals['aal']].reset_index()[['x', 'y', 'z']]
 
             b1 = np.array(a2 - a1)
             b2 = np.array(a3 - a2)
@@ -358,12 +427,12 @@ class DNA(object):
 
         # Compute element fields
         element_ix = {'P': 'P', 'S': 'H', 'A': 'N', 'T': 'S', 'C': 'O', 'G': 'C'}  # Elements choosen to keep VMD colors
-        self.atoms['element'] = [element_ix[atomType] for atomType in self.atoms['name']]
+        self.atoms.loc[:, 'element'] = [element_ix[atomType] for atomType in self.atoms['name']]
 
         # Write pdb file
         with open(pdb_file, 'w+') as pdb:
             for i, atom in self.atoms.iterrows():
-                pdb_line = f'ATOM  {i + 1:>5} {atom["name"]:^4} {atom.resname:<3}  {atom.chainID}{atom.resSeq:>3}    {atom.x:>8.3f}{atom.y:>8.3f}{atom.z:>8.3f}' + ' ' * 22 + f'{atom.element:2}' + ' ' * 2
+                pdb_line = f'ATOM  {i + 1:>5} {atom["name"]:^4} {atom.resname:<3} {atom.chainID}{atom.resSeq:>4}    {atom.x:>8.3f}{atom.y:>8.3f}{atom.z:>8.3f}' + ' ' * 22 + f'{atom.element:2}' + ' ' * 2
                 assert len(pdb_line) == 80, 'An item in the atom table is longer than expected'
                 pdb.write(pdb_line + '\n')
         self.pdb_file = pdb_file
@@ -490,15 +559,17 @@ class DNA(object):
         pass
 
     @classmethod
-    def fromSequence(cls, sequence, center=(0, 0, 0)):
+    def fromSequence(cls, sequence,dna_type='B_curved'):
         """Initializes a DNA object from a DNA sequence"""
+        self = cls()
+        self.parseConfigurationFile()
+        sequence=pandas.Series([a for a in sequence], index=[('A',i) for i in range(len(sequence))])
         # Make a possible structure
+        self.computeGeometry(sequence)
 
         # Make a clean pdb file
-
-        # Initialize the system from the pdb
-
-        pass
+        self = self.fromPDB('x3dna_template.pdb', dna_type=dna_type)
+        return self
 
     @classmethod
     def fromXYZ(cls, xyz_file, dnatype='B_curved'):
@@ -552,10 +623,15 @@ class System(simtk.openmm.System):
 
     def __init__(self, dna, forcefieldFiles=[f'{__location__}/3SPN2.xml'], periodicBox=None):
         self.dna = dna
-        self.top = simtk.openmm.app.PDBFile(dna.pdb_file)
+        self.top = simtk.openmm.app.PDBFile(dna.pdb_file).getTopology()
+        if self.top.getUnitCellDimensions() is None:
+            x = dna.atoms[['x', 'y', 'z']]
+            d = np.round((x.max() - x.min()) * 2 + 5, -1)
+            self.top.setUnitCellDimensions(d)
+
         self.coord = simtk.openmm.app.PDBFile(dna.pdb_file)
         self.forcefield = simtk.openmm.app.ForceField(*forcefieldFiles)
-        self._wrapped_system = self.forcefield.createSystem(self.top.topology)
+        self._wrapped_system = self.forcefield.createSystem(self.top)
         self.periodicBox = periodicBox
         if periodicBox is not None:
             self._wrapped_system.setDefaultPeriodicBoxVectors(*np.diag(self.periodic_box))
@@ -600,7 +676,7 @@ class System(simtk.openmm.System):
         """Starts a sample simulation using the selected system"""
         self.integrator = simtk.openmm.LangevinIntegrator(temperature, 1E-4 / unit.picosecond, 2 * unit.femtoseconds)
         platform = simtk.openmm.Platform.getPlatformByName(platform_name)
-        self.simulation = simtk.openmm.app.Simulation(self.top.topology, self._wrapped_system, self.integrator,
+        self.simulation = simtk.openmm.app.Simulation(self.top, self._wrapped_system, self.integrator,
                                                       platform)
         self.simulation.context.setPositions(self.coord.positions)
         return self.simulation
@@ -732,7 +808,7 @@ class Bond(Force, simtk.openmm.CustomBondForce):
 
 class Angle(Force, simtk.openmm.HarmonicAngleForce):
 
-    def __init__(self,dna):
+    def __init__(self, dna):
         self.force_group = 7
         super().__init__(dna)
 
@@ -750,7 +826,7 @@ class Angle(Force, simtk.openmm.HarmonicAngleForce):
 
 
 class Stacking(Force, simtk.openmm.CustomCompoundBondForce):
-    def __init__(self,dna):
+    def __init__(self, dna):
         self.force_group = 8
         super().__init__(dna)
 
@@ -785,7 +861,7 @@ class Stacking(Force, simtk.openmm.CustomCompoundBondForce):
 
 
 class Dihedral(Force, simtk.openmm.CustomTorsionForce):
-    def __init__(self,dna):
+    def __init__(self, dna):
         self.force_group = 9
         super().__init__(dna)
 
@@ -814,7 +890,7 @@ class Dihedral(Force, simtk.openmm.CustomTorsionForce):
 
 
 class BasePair(Force, simtk.openmm.CustomHbondForce):
-    def __init__(self,dna):
+    def __init__(self, dna):
         self.force_group = 10
         super().__init__(dna)
 
@@ -916,7 +992,7 @@ class BasePair(Force, simtk.openmm.CustomHbondForce):
 
 
 class CrossStacking(Force):
-    def __init__(self,dna):
+    def __init__(self, dna):
         self.force_group = 11
         super().__init__(dna)
 
@@ -980,9 +1056,9 @@ class CrossStacking(Force):
         D2.index = D1.index
         D3.index = D1.index
         temp = pandas.concat([D1, D2, D3], axis=1, keys=['D1', 'D2', 'D3'])
-        sel = np.array(temp[temp['D3', 'name'].isin(['A', 'T', 'G', 'C']) &           # D3 must be a base
-                            temp['D2', 'name'].isin(['S']) &                          # D2 must be a sugar
-                            (temp['D3', 'chainID'] == temp['D1', 'chainID']) &        # D3 must be in the same chain
+        sel = np.array(temp[temp['D3', 'name'].isin(['A', 'T', 'G', 'C']) &  # D3 must be a base
+                            temp['D2', 'name'].isin(['S']) &  # D2 must be a sugar
+                            (temp['D3', 'chainID'] == temp['D1', 'chainID']) &  # D3 must be in the same chain
                             (temp['D2', 'chainID'] == temp['D1', 'chainID'])].index)  # D2 must be in the same chain
         D1 = self.dna.atoms.reindex(sel)
         D2 = self.dna.atoms.reindex(sel - 1)
@@ -992,9 +1068,9 @@ class CrossStacking(Force):
         A2.index = A1.index
         A3.index = A1.index
         temp = pandas.concat([A1, A2, A3], axis=1, keys=['A1', 'A2', 'A3'])
-        sel = np.array(temp[temp['A3', 'name'].isin(['A', 'T', 'G', 'C']) &           # A3 must be a base
-                            temp['A2', 'name'].isin(['S']) &                          # A2 must be a sugar
-                            (temp['A3', 'chainID'] == temp['A1', 'chainID']) &        # A3 must be in the same chain
+        sel = np.array(temp[temp['A3', 'name'].isin(['A', 'T', 'G', 'C']) &  # A3 must be a base
+                            temp['A2', 'name'].isin(['S']) &  # A2 must be a sugar
+                            (temp['A3', 'chainID'] == temp['A1', 'chainID']) &  # A3 must be in the same chain
                             (temp['A2', 'chainID'] == temp['A1', 'chainID'])].index)  # A2 must be in the same chain
         A1 = self.dna.atoms.reindex(sel)
         A2 = self.dna.atoms.reindex(sel - 1)
@@ -1026,7 +1102,7 @@ class CrossStacking(Force):
             # print(param)
             c1.addDonor(d1, d2, d3)
             c2.addAcceptor(d1, d2, d3, parameters)
-            #print("Donor", d1t, d1, d2, d3)
+            # print("Donor", d1t, d1, d2, d3)
             donors[d1t] += [d1]
 
         aceptors = {i: [] for i in ['A', 'T', 'G', 'C']}
@@ -1050,7 +1126,7 @@ class CrossStacking(Force):
             # parameters=[param1['t03']*af,param1['T0CS_2']*af,param1['rng_cs2'],param1['rng_bp'],param1['eps_cs2']*ef,param1['alpha_cs2']/df,param1['Sigma_2']*df]
             c1.addAcceptor(a1, a2, a3, parameters)
             c2.addDonor(a1, a2, a3)
-            #print("Aceptor", a1t, a1, a2, a3)
+            # print("Aceptor", a1t, a1, a2, a3)
             aceptors[_complement[a1t]] += [a1]
 
         # Exclusions
@@ -1109,7 +1185,7 @@ def addNonBondedExclusions(dna, force, OpenCLPatch=True):
 
 
 class Exclusion(Force, simtk.openmm.CustomNonbondedForce):
-    def __init__(self,dna):
+    def __init__(self, dna):
         try:
             self.force_group
         except AttributeError:
@@ -1124,7 +1200,8 @@ class Exclusion(Force, simtk.openmm.CustomNonbondedForce):
         exclusionForce.addPerParticleParameter('epsilon')
         exclusionForce.addPerParticleParameter('sigma')
         exclusionForce.setCutoffDistance(1.8)
-        exclusionForce.setForceGroup(self.force_group)  # There can not be multiple cutoff distance on the same force group
+        exclusionForce.setForceGroup(
+            self.force_group)  # There can not be multiple cutoff distance on the same force group
         if self.periodic:
             exclusionForce.setNonbondedMethod(exclusionForce.CutoffPeriodic)
         else:
@@ -1247,7 +1324,8 @@ class ExclusionProteinDNA(ProteinDNAForce, Exclusion):
 
     def defineInteraction(self):
         # Merge DNA and protein particle definitions
-        dna_particle_definition = self.dna.particle_definition[self.dna.particle_definition['DNA'] == self.dna.DNAtype].copy()
+        dna_particle_definition = self.dna.particle_definition[
+            self.dna.particle_definition['DNA'] == self.dna.DNAtype].copy()
         dna_particle_definition.loc[:, 'molecule'] = 'DNA'
         protein_particle_definition = self.dna.config['Protein Particles']
         protein_particle_definition.loc[:, 'molecule'] = 'protein'
@@ -1295,7 +1373,8 @@ class ElectrostaticsProteinDNA(ProteinDNAForce, Electrostatics):
 
     def defineInteraction(self):
         # Merge DNA and protein particle definitions
-        dna_particle_definition = self.dna.particle_definition[self.dna.particle_definition['DNA'] == self.dna.DNAtype].copy()
+        dna_particle_definition = self.dna.particle_definition[
+            self.dna.particle_definition['DNA'] == self.dna.DNAtype].copy()
         dna_particle_definition.loc[:, 'molecule'] = 'DNA'
         protein_particle_definition = self.dna.config['Protein Particles']
         protein_particle_definition.loc[:, 'molecule'] = 'protein'
@@ -1427,14 +1506,15 @@ def test_parse_log():
 
 class TestEnergies:
     """Tests that the energies are the same as the example outputs from lammps"""
+
     def _test_energy(self,
                      log_energy='E_bond',
                      log_file='Tests/adna/sim.log',
                      traj_file='Tests/adna/traj.xyz',
                      force='Bond', periodic_size=94.2,
-                     platform_name='Reference',dna=None, system=None):
-        self.dna=dna
-        self.system=system
+                     platform_name='Reference', dna=None, system=None):
+        self.dna = dna
+        self.system = system
         self.system.clearForces()
         self.system.setDefaultPeriodicBoxVectors(*np.diag([2 * periodic_size / 10] * 3))
 
@@ -1469,15 +1549,15 @@ class TestEnergies:
             self.system = System(self.dna)
             for j, test in tests.iterrows():
                 print(j)
-                yield self._test_energy, test['Energy term'], f'{folder}/{test.Log}', f'{folder}/{test.Trajectory}',\
+                yield self._test_energy, test['Energy term'], f'{folder}/{test.Log}', f'{folder}/{test.Trajectory}', \
                       test['Name'], test['periodic size'], test['Platform'], self.dna, self.system
 
     def _test_force(self,
-                     log_energy='E_bond',
-                     log_file='Tests/adna/sim.log',
-                     traj_file='Tests/adna/traj.xyz',
-                     force='Bond', periodic_size=94.2,
-                     platform_name='Reference',dna=None, system=None):
+                    log_energy='E_bond',
+                    log_file='Tests/adna/sim.log',
+                    traj_file='Tests/adna/traj.xyz',
+                    force='Bond', periodic_size=94.2,
+                    platform_name='Reference', dna=None, system=None):
         self.dna = dna
         self.system = system
         self.system.clearForces()
@@ -1503,7 +1583,7 @@ class TestEnergies:
             state = simulation.context.getState(getForces=True)
             ff = state.getForces()
             sf = (np.array(ff) ** 2).sum(axis=1) ** .5
-            nan_force_particles=0
+            nan_force_particles = 0
             for j, f in enumerate(sf):
                 if np.isnan(f.value_in_unit(simtk.unit.kilojoule_per_mole / simtk.unit.nanometer)):
                     print(f"Particle {j + 1}/{len(sf)} has force {f} at step {i}")
@@ -1520,10 +1600,8 @@ class TestEnergies:
             self.system = System(self.dna)
             for j, test in tests.iterrows():
                 print(j)
-                yield self._test_force, test['Energy term'], f'{folder}/{test.Log}', f'{folder}/{test.Trajectory}',\
+                yield self._test_force, test['Energy term'], f'{folder}/{test.Log}', f'{folder}/{test.Trajectory}', \
                       test['Name'], test['periodic size'], test['Platform'], self.dna, self.system
-
-
 
     def _test_energies_slow(self):
         test_sets = pandas.read_csv('Tests/test_cases.csv', comment='#')
