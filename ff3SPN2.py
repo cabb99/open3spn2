@@ -5,7 +5,6 @@ DNA simulation using the 3SPN2 and 3SPN2.C forcefields in openmm.
 # TODO Curved BDNA is currently using the original pdb template, it should use X3DNA if possible,
 #  so I need to make it able to take parameters from another pdb if necessary
 
-# TODO put tests in their own folder
 
 __author__ = 'Carlos Bueno'
 __version__ = '0.3'
@@ -201,6 +200,7 @@ class DNA(object):
         return self.sequence
 
     def computeGeometry(self, sequence=None):
+        print("Computing geometry")
         pair = self.config['Base Pair Geometry']
         step = self.config['Base Step Geometry']
         pair.index = pair['stea']
@@ -224,7 +224,7 @@ class DNA(object):
             par.write(f' 0 # local base-pair & step parameters\n')
             par.write('#')
             par.write(data.to_csv(sep=' ', index=False))
-        subprocess.check_output(['/home/cab22/Programs/X3DNA/x3dna-v2.3/bin/rebuild',
+        subprocess.check_output([f'{__location__}/x3dna_utils/rebuild',
                                  '-atomic', 'rebuild_x3dna_parameters.par',
                                  'x3dna_template.pdb'])
         template_dna = self.fromPDB('x3dna_template.pdb')
@@ -740,8 +740,10 @@ class Force(object):
         elif 'force' in self.__dict__:
             return getattr(self.force, attr)
         else:
-            raise AttributeError(f"type object {str(self)} has no attribute {str(attr)}")
-
+            if '__repr__' in self.__dict__:
+                raise AttributeError(f"type object {str(self)} has no attribute {str(attr)}")
+            else:
+                raise AttributeError()
     def computeEnergy(self, system, trajectory):
         # Parse trajectory
         traj = parse_xyz('Tests/adna/traj.xyz')
@@ -936,14 +938,35 @@ class BasePair(Force, simtk.openmm.CustomHbondForce):
 
     def defineInteraction(self):
         pair_definition = self.dna.pair_definition[self.dna.pair_definition['DNA'] == self.dna.DNAtype]
-        is_dna = self.dna.atoms['resname'].isin(_dnaResidues)
+        atoms = self.dna.atoms.copy()
+        atoms['index'] = atoms.index
+        atoms.index = zip(atoms['chainID'], atoms['resSeq'], atoms['name'])
+        is_dna = atoms['resname'].isin(_dnaResidues)
 
         for i, pair in pair_definition.iterrows():
-            D1 = list(self.dna.atoms[(self.dna.atoms['name'] == pair['Base1']) & is_dna].index)
-            A1 = list(self.dna.atoms[(self.dna.atoms['name'] == pair['Base2']) & is_dna].index)
+            D1 = atoms[(atoms['name'] == pair['Base1']) & is_dna].copy()
+            A1 = atoms[(atoms['name'] == pair['Base2']) & is_dna].copy()
 
-            D2 = [j - 1 for j in D1]
-            A2 = [j - 1 for j in A1]
+            try:
+                D2 = atoms.loc[[(c, r, 'S') for c, r, n in D1.index]]
+            except KeyError:
+                for c, r, n in D1.index:
+                    if (c, r, 'S') not in atoms.index:
+                        print(f'Residue {c}:{r} does not have a Sugar atom (S)')
+                raise KeyError
+
+            try:
+                A2 = atoms.loc[[(c, r, 'S') for c, r, n in A1.index]]
+            except KeyError:
+                for c, r, n in A1.index:
+                    if (c, r, 'S') not in atoms.index:
+                        print(f'Residue {c}:{r} does not have a Sugar atom (S)')
+                raise KeyError
+
+            D1_list = list(D1['index'])
+            A1_list = list(A1['index'])
+            D2_list = list(D2['index'])
+            A2_list = list(A2['index'])
 
             # Define parameters
             parameters = [pair.torsion * _af,
@@ -957,34 +980,25 @@ class BasePair(Force, simtk.openmm.CustomHbondForce):
             # Add donors and acceptors
             # Here I am including the same atom twice,
             # it doesn't seem to break things
-            for d1, d2 in zip(D1, D2):
+            for d1, d2 in zip(D1_list, D2_list):
                 self.forces[i].addDonor(d1, d2, d2, parameters)
-            for a1, a2 in zip(A1, A2):
+                #print(d1, d2, d2, parameters)
+            for a1, a2 in zip(A1_list, A2_list):
                 self.forces[i].addAcceptor(a1, a2, a2)
-
+                #print(a1, a2, a2)
             # Exclude interactions
-            atoms = self.dna.atoms.copy()
-            atoms.loc[D1, 'donor_id'] = [i for i in range(len(D1))]
-            atoms.loc[A1, 'aceptor_id'] = [i for i in range(len(A1))]
+            D1['donor_id'] = [i for i in range(len(D1))]
+            A1['aceptor_id'] = [i for i in range(len(A1))]
 
-            interaction = np.zeros([len(self.dna.atoms.resSeq.unique()) // 2, len(self.dna.atoms.resSeq.unique()) // 2])
-            interaction[:, :] = 1
-            for k, chain in atoms.loc[D1 + A1].groupby('chainID'):
-                dds = chain.donor_id.dropna()
-                aas = chain.aceptor_id.dropna()
-                for d, a in itertools.product(dds.iteritems(), aas.iteritems()):
-                    di = d[0]
-                    d = int(d[1])
-                    ai = a[0]
-                    a = int(a[1])
-                    # The sequence exclusion was reduced to two residues
-                    # since the maximum number of exclusions in OpenCL is 4.
-                    # In the original 3SPN2 it was 3 residues (6 to 9)
-                    # This change has no noticeable effect
-                    if abs(ai - di) <= 6:
-                        self.forces[i].addExclusion(d, a)
-                        # print(di, ai, d, a)
-                        interaction[d, a] = 0
+            for (_i, atom_a), (_j, atom_b) in itertools.product(D1.iterrows(), A1.iterrows()):
+                # Neighboring residues
+                # The sequence exclusion was reduced to two residues
+                # since the maximum number of exclusions in OpenCL is 4.
+                # In the original 3SPN2 it was 3 residues (6 to 9)
+                # This change has no noticeable effect
+                if (atom_a.chainID == atom_b.chainID) and (abs(atom_a.resSeq - atom_b.resSeq) <= 2):
+                    self.forces[i].addExclusion(atom_a['donor_id'], atom_b['aceptor_id'])
+                    #print(_i, _j)
 
     def addForce(self, system):
         for f in self.forces:
@@ -1043,38 +1057,41 @@ class CrossStacking(Force):
         self.crossStackingForces = crossStackingForces
 
     def defineInteraction(self):
-        # Donators
-        bases = np.array(self.dna.atoms[self.dna.atoms['name'].isin(['A', 'T', 'G', 'C'])].index)
-        D1 = self.dna.atoms.reindex(bases)
-        D2 = self.dna.atoms.reindex(bases - 1)
-        D3 = self.dna.atoms.reindex(bases + 3)
-        A1 = self.dna.atoms.reindex(bases)
-        A2 = self.dna.atoms.reindex(bases - 1)
-        A3 = self.dna.atoms.reindex(bases - 3)
+        atoms = self.dna.atoms.copy()
+        atoms['index'] = atoms.index
+        atoms.index = zip(atoms['chainID'], atoms['resSeq'], atoms['name'].replace(['A', 'C', 'T', 'G'], 'B'))
+        is_dna = atoms['resname'].isin(_dnaResidues)
+        bases = atoms[atoms['name'].isin(['A', 'T', 'G', 'C']) & is_dna]
+        D1 = bases
+        D2 = atoms.reindex([(c, r, 'S') for c, r, n in bases.index])
+        D3 = atoms.reindex([(c, r + 1, 'B') for c, r, n in bases.index])
+        A1 = D1
+        A2 = D2
+        A3 = atoms.reindex([(c, r - 1, 'B') for c, r, n in bases.index])
 
         # Select only bases where the other atoms exist
         D2.index = D1.index
         D3.index = D1.index
         temp = pandas.concat([D1, D2, D3], axis=1, keys=['D1', 'D2', 'D3'])
-        sel = np.array(temp[temp['D3', 'name'].isin(['A', 'T', 'G', 'C']) &  # D3 must be a base
-                            temp['D2', 'name'].isin(['S']) &  # D2 must be a sugar
-                            (temp['D3', 'chainID'] == temp['D1', 'chainID']) &  # D3 must be in the same chain
-                            (temp['D2', 'chainID'] == temp['D1', 'chainID'])].index)  # D2 must be in the same chain
-        D1 = self.dna.atoms.reindex(sel)
-        D2 = self.dna.atoms.reindex(sel - 1)
-        D3 = self.dna.atoms.reindex(sel + 3)
+        sel = temp[temp['D3', 'name'].isin(['A', 'T', 'G', 'C']) &  # D3 must be a base
+                   temp['D2', 'name'].isin(['S']) &  # D2 must be a sugar
+                   (temp['D3', 'chainID'] == temp['D1', 'chainID']) &  # D3 must be in the same chain
+                   (temp['D2', 'chainID'] == temp['D1', 'chainID'])].index  # D2 must be in the same chain
+        D1 = atoms.reindex(sel)
+        D2 = atoms.reindex([(c, r, 'S') for c, r, n in sel])
+        D3 = atoms.reindex([(c, r + 1, 'B') for c, r, n in sel])
 
         # Aceptors
         A2.index = A1.index
         A3.index = A1.index
         temp = pandas.concat([A1, A2, A3], axis=1, keys=['A1', 'A2', 'A3'])
-        sel = np.array(temp[temp['A3', 'name'].isin(['A', 'T', 'G', 'C']) &  # A3 must be a base
-                            temp['A2', 'name'].isin(['S']) &  # A2 must be a sugar
-                            (temp['A3', 'chainID'] == temp['A1', 'chainID']) &  # A3 must be in the same chain
-                            (temp['A2', 'chainID'] == temp['A1', 'chainID'])].index)  # A2 must be in the same chain
-        A1 = self.dna.atoms.reindex(sel)
-        A2 = self.dna.atoms.reindex(sel - 1)
-        A3 = self.dna.atoms.reindex(sel - 3)
+        sel = temp[temp['A3', 'name'].isin(['A', 'T', 'G', 'C']) &  # A3 must be a base
+                   temp['A2', 'name'].isin(['S']) &  # A2 must be a sugar
+                   (temp['A3', 'chainID'] == temp['A1', 'chainID']) &  # A3 must be in the same chain
+                   (temp['A2', 'chainID'] == temp['A1', 'chainID'])].index  # A2 must be in the same chain
+        A1 = atoms.reindex(sel)
+        A2 = atoms.reindex([(c, r, 'S') for c, r, n in sel])
+        A3 = atoms.reindex([(c, r - 1, 'B') for c, r, n in sel])
 
         # Parameters
         cross_definition = self.dna.cross_definition[self.dna.cross_definition['DNA'] == self.dna.DNAtype].copy()
@@ -1082,7 +1099,8 @@ class CrossStacking(Force):
         cross_definition.index = i
 
         donors = {i: [] for i in ['A', 'T', 'G', 'C']}
-        for donator, donator2, d1, d2, d3 in zip(D1.itertuples(), D3.itertuples(), D1.index, D2.index, D3.index):
+        for donator, donator2, d1, d2, d3 in zip(D1.itertuples(), D3.itertuples(), D1['index'], D2['index'],
+                                                 D3['index']):
             # if d1!=4:
             #    continue
             d1t = donator.name
@@ -1106,7 +1124,8 @@ class CrossStacking(Force):
             donors[d1t] += [d1]
 
         aceptors = {i: [] for i in ['A', 'T', 'G', 'C']}
-        for aceptor, aceptor2, a1, a2, a3 in zip(A1.itertuples(), A3.itertuples(), A1.index, A2.index, A3.index):
+        for aceptor, aceptor2, a1, a2, a3 in zip(A1.itertuples(), A3.itertuples(), A1['index'], A2['index'],
+                                                 A3['index']):
             # if a1!=186:
             #    continue
             a1t = aceptor.name
