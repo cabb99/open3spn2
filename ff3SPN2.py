@@ -508,9 +508,17 @@ class DNA(object):
         # Select DNA residues
         temp = temp[temp['resname'].isin(['DA', 'DT', 'DG', 'DC'])]
 
-        # Groupd the atoms by sugar, phosphate or base
-        temp['group'] = temp.name.replace(CG)
+        # Group the atoms by sugar, phosphate or base
+        temp['group'] = temp['name'].replace(CG)
         temp = temp[temp['group'].isin(['P', 'S', 'B'])]
+
+        # Move the O3' to the next residue
+        for c in temp['chainID'].unique():
+            sel = temp.loc[(temp['name'] == "O3\'") & (temp['chainID'] == c), "resSeq"]
+            temp.loc[(temp['name'] == "O3\'") & (temp['chainID'] == c), "resSeq"] = list(sel)[1:] + [-1]
+            sel = temp.loc[(temp['name'] == "O3\'") & (temp['chainID'] == c), "resname"]
+            temp.loc[(temp['name'] == "O3\'") & (temp['chainID'] == c), "resname"] = list(sel)[1:] + [-1]
+        temp = temp[temp['resSeq'] > 0]
 
         # Calculate center of mass
         temp['mass'] = temp.element.replace(masses).astype(float)
@@ -545,6 +553,7 @@ class DNA(object):
         self.parseConfigurationFile()
         self.computeTopology()
         self.writePDB()
+        self.atomistic_model=temp
         return self
 
     @classmethod
