@@ -159,6 +159,7 @@ class DNATypeError(BaseError):
 
 
 class DNA(object):
+    """ A Coarse Grained DNA object."""
     def __init__(self, periodic=True):
         """Initializes an DNA object"""
         self.periodic = periodic
@@ -648,7 +649,7 @@ class System(simtk.openmm.System):
         elif periodicBox is None and self.dna.periodic == True:
             self.dna.periodic = False
             print('Periodic boundary conditions not defined, system would be non periodic')
-        self.force_groups = {}
+        self.forces = {}
 
     def __getattr__(self, attr):
         if attr in self.__dict__:
@@ -679,7 +680,7 @@ class System(simtk.openmm.System):
                 force.addForce(self)
             else:
                 self.addForce(force)
-            self.force_groups.update({force_name: force.getForceGroup()})
+            self.forces.update({force_name: force})
 
     def initializeMD(self, temperature=300 * unit.kelvin, platform_name='Reference'):
         """Starts a sample simulation using the selected system"""
@@ -728,14 +729,15 @@ class System(simtk.openmm.System):
 
 
 class Force(object):
+    """ Wrapper for the openMM force. """
 
-    def __init__(self, dna):
+    def __init__(self, dna, OpenCLPatch=True):
         self.periodic = dna.periodic
         self.force = None
         self.dna = dna
         # The patch allows the crosstacking force to run in OpenCL
         # introducing a small difference in the crosstacking energy
-        self.OpenCLPatch = True
+        self.OpenCLPatch = OpenCLPatch
 
         # Define the dna force
         self.reset()
@@ -753,6 +755,7 @@ class Force(object):
                 raise AttributeError(f"type object {str(self)} has no attribute {str(attr)}")
             else:
                 raise AttributeError()
+
     def computeEnergy(self, system, trajectory):
         # Parse trajectory
         traj = parse_xyz('Tests/adna/traj.xyz')
@@ -1228,8 +1231,7 @@ class Exclusion(Force, simtk.openmm.CustomNonbondedForce):
         exclusionForce.addPerParticleParameter('epsilon')
         exclusionForce.addPerParticleParameter('sigma')
         exclusionForce.setCutoffDistance(1.8)
-        exclusionForce.setForceGroup(
-            self.force_group)  # There can not be multiple cutoff distance on the same force group
+        exclusionForce.setForceGroup(self.force_group)  # There can not be multiple cutoff distance on the same force group
         if self.periodic:
             exclusionForce.setNonbondedMethod(exclusionForce.CutoffPeriodic)
         else:
@@ -1285,7 +1287,8 @@ class Electrostatics(Force, simtk.openmm.CustomNonbondedForce):
 
         ldby = np.sqrt(dielectric * pv * kb * T / (2.0 * Na * ec ** 2 * C))
         ldby = ldby.in_units_of(unit.nanometer)
-        denominator = 4 * np.pi * pv * dielectric / Na * ec ** 2
+        denominator = 4 * np.pi * pv * dielectric / (Na * ec ** 2)
+        denominator = denominator.in_units_of(unit.kilocalorie_per_mole**-1 * unit.nanometer**-1)
         print(ldby, denominator)
 
         electrostaticForce = simtk.openmm.CustomNonbondedForce("""energy;
@@ -1341,48 +1344,71 @@ class ProteinDNAForce(Force):
         super().__init__(dna)
 
 
-class ExclusionProteinDNA(ProteinDNAForce, Exclusion):
-    def __init__(self, dna, protein):
-        self.force_group = 14
+class ExclusionProteinDNA(ProteinDNAForce):
+    """ Protein-DNA exclusion potential"""
+    def __init__(self, dna, protein, force_group=14):
+        self.force_group = force_group
         super().__init__(dna, protein)
 
     def reset(self):
-        super().reset()
-        self.force.setForceGroup(self.force_group)
+        exclusionForce = simtk.openmm.CustomNonbondedForce("""energy;
+                                                            energy=(4*epsilon*((sigma/r)^12-(sigma/r)^6)-offset)*step(cutoff-r);
+                                                            offset=4*epsilon*((sigma/cutoff)^12-(sigma/cutoff)^6);
+                                                            sigma=0.5*(sigma1+sigma2); 
+                                                            epsilon=sqrt(epsilon1*epsilon2);
+                                                            cutoff=sqrt(cutoff1*cutoff2)""")
+        exclusionForce.addPerParticleParameter('epsilon')
+        exclusionForce.addPerParticleParameter('sigma')
+        exclusionForce.addPerParticleParameter('cutoff')
+        exclusionForce.setCutoffDistance(1.55)
+        # exclusionForce.setUseLongRangeCorrection(True)
+        exclusionForce.setForceGroup(self.force_group)  # There can not be multiple cutoff distance on the same force group
+        if self.periodic:
+            exclusionForce.setNonbondedMethod(exclusionForce.CutoffPeriodic)
+        else:
+            exclusionForce.setNonbondedMethod(exclusionForce.CutoffNonPeriodic)
+        self.force = exclusionForce
 
     def defineInteraction(self):
+
+        particle_definition = self.dna.config['Protein-DNA particles']
+        dna_particle_definition=particle_definition[(particle_definition['molecule'] == 'DNA') &
+                                                    (particle_definition['DNA'] == self.dna.DNAtype)]
+        protein_particle_definition = particle_definition[(particle_definition['molecule'] == 'Protein')]
+
         # Merge DNA and protein particle definitions
-        dna_particle_definition = self.dna.particle_definition[
-            self.dna.particle_definition['DNA'] == self.dna.DNAtype].copy()
-        dna_particle_definition.loc[:, 'molecule'] = 'DNA'
-        protein_particle_definition = self.dna.config['Protein Particles']
-        protein_particle_definition.loc[:, 'molecule'] = 'protein'
         particle_definition = pandas.concat([dna_particle_definition, protein_particle_definition], sort=False)
         particle_definition.index = particle_definition.molecule + particle_definition.name
+        self.particle_definition = particle_definition
 
-        self.force.setCutoffDistance(particle_definition.radius.max() * _df)
-        # Select only dna atoms
         is_dna = self.dna.atoms['resname'].isin(_dnaResidues)
         is_protein = self.dna.atoms['resname'].isin(_proteinResidues)
         atoms = self.dna.atoms.copy()
         atoms['is_dna'] = is_dna
         atoms['is_protein'] = is_protein
+        atoms['epsilon']=np.nan
+        atoms['radius']=np.nan
+        atoms['cutoff'] = np.nan
         DNA_list = []
         protein_list = []
         for i, atom in atoms.iterrows():
             if atom.is_dna:
                 param = particle_definition.loc['DNA' + atom['name']]
                 parameters = [param.epsilon * _ef,
-                              param.radius * _df]
+                              param.radius * _df,
+                              param.cutoff * _df]
                 DNA_list += [i]
             elif atom.is_protein:
-                param = particle_definition.loc['protein' + atom['name']]
+                param = particle_definition.loc['Protein' + atom['name']]
                 parameters = [param.epsilon * _ef,
-                              param.radius * _df]
+                              param.radius * _df,
+                              param.cutoff * _df]
                 protein_list += [i]
             else:
                 print(f'Residue {i} not included in protein-DNA interactions')
-                parameters = [0, .1]
+                parameters = [0, .1,.1]
+            atoms.loc[i, ['epsilon', 'radius', 'cutoff']] = parameters
+            self.atoms = atoms
             self.force.addParticle(parameters)
         self.force.addInteractionGroup(DNA_list, protein_list)
 
@@ -1390,24 +1416,50 @@ class ExclusionProteinDNA(ProteinDNAForce, Exclusion):
         addNonBondedExclusions(self.dna, self.force)
 
 
-class ElectrostaticsProteinDNA(ProteinDNAForce, Electrostatics):
-    def __init__(self, dna, protein):
-        self.force_group = 15
+class ElectrostaticsProteinDNA(ProteinDNAForce):
+    """DNA-protein and protein-protein electrostatics."""
+    def __init__(self, dna, protein, force_group=15):
+        self.force_group = force_group
         super().__init__(dna, protein)
 
     def reset(self):
-        super().reset()
-        self.force.setForceGroup(self.force_group)
+        dielectric = 78 # e * a
+        print(dielectric)
+        # Debye length
+        Na = simtk.unit.AVOGADRO_CONSTANT_NA  # Avogadro number
+        ec = 1.60217653E-19 * unit.coulomb  # proton charge
+        pv = 8.8541878176E-12 * unit.farad / unit.meter  # dielectric permittivity of vacuum
+
+        ldby = 1.2 * unit.nanometer # np.sqrt(dielectric * pv * kb * T / (2.0 * Na * ec ** 2 * C))
+        denominator = 4 * np.pi * pv * dielectric / (Na * ec ** 2)
+        denominator = denominator.in_units_of(unit.kilocalorie_per_mole**-1 * unit.nanometer**-1)
+        print(ldby, denominator)
+
+        electrostaticForce = simtk.openmm.CustomNonbondedForce("""energy;
+                                                                energy=q1*q2*exp(-r/inter_dh_length)/inter_denominator/r;""")
+        electrostaticForce.addPerParticleParameter('q')
+        electrostaticForce.addGlobalParameter('inter_dh_length', ldby)
+        electrostaticForce.addGlobalParameter('inter_denominator', denominator)
+
+        electrostaticForce.setCutoffDistance(4)
+        if self.periodic:
+            electrostaticForce.setNonbondedMethod(electrostaticForce.CutoffPeriodic)
+        else:
+            electrostaticForce.setNonbondedMethod(electrostaticForce.CutoffNonPeriodic)
+        electrostaticForce.setForceGroup(self.force_group)
+        self.force = electrostaticForce
 
     def defineInteraction(self):
         # Merge DNA and protein particle definitions
-        dna_particle_definition = self.dna.particle_definition[
-            self.dna.particle_definition['DNA'] == self.dna.DNAtype].copy()
-        dna_particle_definition.loc[:, 'molecule'] = 'DNA'
-        protein_particle_definition = self.dna.config['Protein Particles']
-        protein_particle_definition.loc[:, 'molecule'] = 'protein'
+        particle_definition = self.dna.config['Protein-DNA particles']
+        dna_particle_definition=particle_definition[(particle_definition['molecule'] == 'DNA') &
+                                                    (particle_definition['DNA'] == self.dna.DNAtype)]
+        protein_particle_definition = particle_definition[(particle_definition['molecule'] == 'Protein')]
+
+        # Merge DNA and protein particle definitions
         particle_definition = pandas.concat([dna_particle_definition, protein_particle_definition], sort=False)
         particle_definition.index = particle_definition.molecule + particle_definition.name
+        self.particle_definition = particle_definition
 
         # Open Sequence dependent electrostatics
         sequence_electrostatics = self.dna.config['Sequence dependent electrostatics']
@@ -1429,19 +1481,22 @@ class ElectrostaticsProteinDNA(ProteinDNAForce, Electrostatics):
                 parameters = [charge]
                 if charge != 0:
                     DNA_list += [i]
+                    #print(atom.chainID, atom.resSeq, atom.resname, atom['name'], charge)
             elif atom.is_protein:
-                atom_param = particle_definition.loc['protein' + atom['name']]
+                atom_param = particle_definition.loc['Protein' + atom['name']]
                 seq_param = sequence_electrostatics.loc[atom.real_resname]
                 charge = atom_param.charge * seq_param.charge
                 parameters = [charge]
                 if charge != 0:
                     protein_list += [i]
+                    #print(atom.chainID, atom.resSeq, atom.resname, atom['name'], charge)
             else:
                 print(f'Residue {i} not included in protein-DNA electrostatics')
                 parameters = [0]  # No charge if it is not DNA
             # print (i,parameters)
             self.force.addParticle(parameters)
         self.force.addInteractionGroup(DNA_list, protein_list)
+        self.force.addInteractionGroup(protein_list, protein_list)
 
         # addExclusions
         addNonBondedExclusions(self.dna, self.force)
