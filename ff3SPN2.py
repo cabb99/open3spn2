@@ -1503,7 +1503,7 @@ class ElectrostaticsProteinDNA(ProteinDNAForce):
             # print (i,parameters)
             self.force.addParticle(parameters)
         self.force.addInteractionGroup(DNA_list, protein_list)
-        #self.force.addInteractionGroup(protein_list, protein_list) protein-protein electrostatics should be included using debye Huckel Terms
+        # self.force.addInteractionGroup(protein_list, protein_list) #protein-protein electrostatics should be included using debye Huckel Terms
 
         # addExclusions
         addNonBondedExclusions(self.dna, self.force)
