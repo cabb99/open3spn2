@@ -489,6 +489,18 @@ class DNA(object):
         self = cls()
         pdb = fixPDB(pdb_file)
         pdb_table = pdb2table(pdb)
+
+        self.atoms = self.CoarseGrain[pdb_table]
+        self.DNAtype = dna_type
+        self.parseConfigurationFile()
+        self.computeTopology()
+        self.writePDB()
+        self.atomistic_model=temp
+        return self
+
+    @staticmethod
+    def CoarseGrain(pdb_table):
+        """ Selects DNA atoms from a pdb table and returns a table containing only the coarse-grained atoms for 3SPN2"""
         masses = {"H": 1.00794, "C": 12.0107, "N": 14.0067, "O": 15.9994, "P": 30.973762, }
         CG = {"O5\'": 'P', "C5\'": 'S', "C4\'": 'S', "O4\'": 'S', "C3\'": 'S', "O3\'": 'P',
               "C2\'": 'S', "C1\'": 'S', "O5*": 'P', "C5*": 'S', "C4*": 'S', "O4*": 'S',
@@ -522,6 +534,7 @@ class DNA(object):
         temp = temp[temp['resSeq'] > 0]
 
         # Calculate center of mass
+        temp['element']=temp['element'].str.strip()
         temp['mass'] = temp.element.replace(masses).astype(float)
         temp[['x', 'y', 'z']] = (temp[['x', 'y', 'z']].T * temp['mass']).T[['x', 'y', 'z']]
         temp = temp[temp['element'] != 'H']  # Exclude hydrogens
@@ -549,13 +562,7 @@ class DNA(object):
         # Renumber
         Coarse.index = range(len(Coarse))
         Coarse['serial'] = Coarse.index
-        self.atoms = Coarse[cols]
-        self.DNAtype = dna_type
-        self.parseConfigurationFile()
-        self.computeTopology()
-        self.writePDB()
-        self.atomistic_model=temp
-        return self
+        return Coarse[cols]
 
     @classmethod
     def fromGRO(cls, gro_file):
@@ -904,9 +911,9 @@ class Dihedral(Force, simtk.openmm.CustomTorsionForce):
 
 
 class BasePair(Force, simtk.openmm.CustomHbondForce):
-    def __init__(self, dna):
+    def __init__(self, dna, OpenCLPatch=True):
         self.force_group = 10
-        super().__init__(dna)
+        super().__init__(dna, OpenCLPatch)
 
     def reset(self):
         def basePairForce():
@@ -1018,9 +1025,9 @@ class BasePair(Force, simtk.openmm.CustomHbondForce):
 
 
 class CrossStacking(Force):
-    def __init__(self, dna):
+    def __init__(self, dna, OpenCLPatch=True):
         self.force_group = 11
-        super().__init__(dna)
+        super().__init__(dna,OpenCLPatch)
 
     def reset(self):
         def crossStackingForce(parametersOnDonor=False):
@@ -1496,7 +1503,7 @@ class ElectrostaticsProteinDNA(ProteinDNAForce):
             # print (i,parameters)
             self.force.addParticle(parameters)
         self.force.addInteractionGroup(DNA_list, protein_list)
-        self.force.addInteractionGroup(protein_list, protein_list)
+        #self.force.addInteractionGroup(protein_list, protein_list) protein-protein electrostatics should be included using debye Huckel Terms
 
         # addExclusions
         addNonBondedExclusions(self.dna, self.force)
@@ -1568,8 +1575,12 @@ def parse_log(filename=''):
                     break
     log_data = pandas.DataFrame(log_data, columns=columns)
 
-    for i in ['Step', 'nbp']:
-        log_data[i] = log_data[i].astype(int)
+    try:
+        for i in ['Step', 'nbp']:
+            log_data[i] = log_data[i].astype(int)
+    except KeyError:
+        for i in ['Step', 'v_nbp']:
+            log_data[i] = log_data[i].astype(int)
     return log_data
 
 
