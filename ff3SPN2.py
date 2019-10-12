@@ -490,12 +490,12 @@ class DNA(object):
         pdb = fixPDB(pdb_file)
         pdb_table = pdb2table(pdb)
 
-        self.atoms = self.CoarseGrain[pdb_table]
+        self.atoms = self.CoarseGrain(pdb_table)
         self.DNAtype = dna_type
         self.parseConfigurationFile()
         self.computeTopology()
         self.writePDB()
-        self.atomistic_model=temp
+        #self.atomistic_model=temp
         return self
 
     @staticmethod
