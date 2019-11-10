@@ -207,12 +207,19 @@ class DNA(object):
             data += [pandas.concat([pandas.Series([f'{s}-{_complement[s]}'], index=['Sequence']), pair_s, step_s])]
             _s = s
         data = pandas.concat(data, axis=1).T
+        try:
+            location_x3dna = os.environ["X3DNA"]
+        except KeyError as ex:
+            raise X3DNAnotFound from ex
+
         with open('rebuild_x3dna_parameters.par', 'w+') as par:
             par.write(f' {len(data)} # Number of base pairs\n')
             par.write(f' 0 # local base-pair & step parameters\n')
             par.write('#')
             par.write(data.to_csv(sep=' ', index=False))
-        subprocess.check_output([f'{__location__}/x3dna_utils/rebuild',
+        subprocess.check_output([f'{location_x3dna}/bin/x3dna_utils',
+                                 'cp_std', 'BDNA'])
+        subprocess.check_output([f'{location_x3dna}/bin/rebuild',
                                  '-atomic', 'rebuild_x3dna_parameters.par',
                                  'x3dna_template.pdb'])
         template_dna = self.fromPDB('x3dna_template.pdb')
@@ -260,7 +267,7 @@ class DNA(object):
         self.atoms.index = range(len(self.atoms))
 
         # Compute B_curved geometry if needed
-        if DNAtype == 'B_curved' and template_from_structure:
+        if DNAtype == 'B_curved' and template_from_X3DNA:
             self.template_atoms = self.computeGeometry()
         else:
             self.template_atoms = self.atoms
