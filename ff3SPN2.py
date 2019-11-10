@@ -1,6 +1,7 @@
 #!/usr/bin/python3
 """
-DNA simulation using the 3SPN2 and 3SPN2.C forcefields in openmm.
+This module implements the 3SPN2 forcefield and 3SPN2.C forcefield in openmm.
+It also contains Protein-DNA interaction potentials to be used with openAWSEM.
 """
 # TODO Curved BDNA is currently using the original pdb template, it should use X3DNA if possible,
 #  so I need to make it able to take parameters from another pdb if necessary
@@ -141,23 +142,6 @@ def pdb2table(pdb):
     atom_list.index = atom_list['serial']
     return atom_list
 
-
-# Some typical errors
-class BaseError(Exception):
-    pass
-
-
-class DNATypeError(BaseError):
-    """Only some DNA types are defined (A, B, B_curved)"""
-
-    def __init__(self, dna):
-        self.dna = dna
-        self.message = f'DNA type {dna.DNAtype} not defined in the configuration file\n'
-        defined_types = dna.angle_definition['DNA'].unique()
-        self.message += f'Only the types {str(defined_types)} were defined'
-        print(self.message)
-
-
 class DNA(object):
     """ A Coarse Grained DNA object."""
     def __init__(self, periodic=True):
@@ -169,7 +153,8 @@ class DNA(object):
         # print the sequence and the identity of the DNA object
 
     def parseConfigurationFile(self, configuration_file=f'{__location__}/3SPN2.conf'):
-        """Reads the configuration file for the forcefield"""
+        """Reads the configuration file for the forcefield. The default configuration file is 3SPN2.conf
+        and it contains most of the parameters used in the simulation."""
         self.configuration_file = configuration_file
         config = configparser.ConfigParser()
         config.read(configuration_file)
@@ -189,6 +174,7 @@ class DNA(object):
         self.cross_definition = self.config['Cross Stackings']
 
     def getSequences(self):
+        """ Returns the DNA sequence as a Pandas Series. The index of the Series is (Chain, resid)"""
         dna_data = self.atoms[self.atoms.resname.isin(_dnaResidues)].copy()
         sequences = {}
         for c, chain in dna_data.groupby('chainID'):
@@ -201,7 +187,8 @@ class DNA(object):
         return self.sequence
 
     def computeGeometry(self, sequence=None):
-        print("Computing geometry")
+        """ This function requires X3DNA. It returns a pdb table containing the expected DNA structure"""
+        #print("Computing geometry")
         pair = self.config['Base Pair Geometry']
         step = self.config['Base Step Geometry']
         pair.index = pair['stea']
@@ -253,8 +240,11 @@ class DNA(object):
         original.index = self.atoms.index
         return original
 
-    def computeTopology(self, template_from_structure=False):
-        """Creates tables of bonds, angles and dihedrals with their respective parameters (bonded interactions)"""
+    def computeTopology(self, template_from_X3DNA=False):
+        """ Creates tables of bonds, angles and dihedrals with their respective parameters (bonded interactions).
+        3SPN2.C requires a template structure to calculate the equilibrium bonds, angles and dihedrals.
+        If template_from_structure is True, it will try to compute the equilibrium geometry using X3DNA.
+        If template_from_structure is False, then the initial structure is expected to be the equilibrium geometry"""
         # Parse configuration file if not already done
         try:
 
@@ -441,7 +431,7 @@ class DNA(object):
 
     @classmethod
     def fromCoarsePDB(cls, pdb_file, dna_type='B_curved'):
-        """Initializes a DNA object from a pdb file"""
+        """Initializes a DNA object from a pdb file containing the Coarse Grained atoms"""
         self = cls()
 
         def pdb_line(line):
@@ -564,20 +554,19 @@ class DNA(object):
         Coarse['serial'] = Coarse.index
         return Coarse[cols]
 
-    @classmethod
-    def fromGRO(cls, gro_file):
-        """Initializes a DNA object from a gromacs input file"""
-        # Parse the gromacs file
-
-        # Make a clean pdb file
-
-        # Initialize the system from the pdb
-
-        pass
+#    @classmethod
+#    def fromGRO(cls, gro_file):
+#        """Initializes a DNA object from a gromacs input file"""
+#        # Parse the gromacs file
+#
+#        # Make a clean pdb file
+#
+#        # Initialize the system from the pdb
+#        pass
 
     @classmethod
     def fromSequence(cls, sequence,dna_type='B_curved'):
-        """Initializes a DNA object from a DNA sequence"""
+        """ Initializes a DNA object from a DNA sequence """
         self = cls()
         self.parseConfigurationFile()
         sequence=pandas.Series([a for a in sequence], index=[('A',i) for i in range(len(sequence))])
@@ -590,7 +579,7 @@ class DNA(object):
 
     @classmethod
     def fromXYZ(cls, xyz_file, dnatype='B_curved'):
-        """Initializes DNA object from xyz file (as seen on the examples)"""
+        """ Initializes DNA object from xyz file (as seen on the examples) """
         # Parse the file
         self = cls()
         self.atoms = pandas.read_csv(xyz_file, delim_whitespace=True, skiprows=2,
@@ -664,7 +653,8 @@ class System(simtk.openmm.System):
         return getattr(self._wrapped_system, attr)
 
     def clearForces(self, keepCMMotionRemover=True):
-        """ Removes all the forces from the system """
+        """ Removes all the forces from the system.
+        openMM usually adds a "CMMotionRemover" force to keep the center of mass of the system from drifting."""
         j = 0
         for i, f in enumerate(self.getForces()):
             if keepCMMotionRemover and i == 0 and f.__class__ == simtk.openmm.CMMotionRemover:
@@ -679,9 +669,11 @@ class System(simtk.openmm.System):
         else:
             assert len(self.getForces()) <= 1, 'Not all the forces were removed'
 
-    def add3SPN2forces(self):
+    def add3SPN2forces(self, verbose=False):
+        """ Adds all DNA forces"""
         for force_name in forces:
-            print(force_name)
+            if verbose:
+                print(force_name)
             force = forces[force_name](self.dna)
             if force_name in ['BasePair', 'CrossStacking']:
                 force.addForce(self)
@@ -689,12 +681,20 @@ class System(simtk.openmm.System):
                 self.addForce(force)
             self.forces.update({force_name: force})
 
+    def addProteinDNAforces(self, verbose=False):
+        """ Adds protein - DNA interaction forces"""
+        for force_name in protein_dna_forces:
+            if verbose:
+                print(force_name)
+            force = forces[force_name](self.dna)
+            self.addForce(force)
+            self.forces.update({force_name: force})
+
     def initializeMD(self, temperature=300 * unit.kelvin, platform_name='Reference'):
-        """Starts a sample simulation using the selected system"""
-        self.integrator = simtk.openmm.LangevinIntegrator(temperature, 1E-4 / unit.picosecond, 2 * unit.femtoseconds)
-        platform = simtk.openmm.Platform.getPlatformByName(platform_name)
-        self.simulation = simtk.openmm.app.Simulation(self.top, self._wrapped_system, self.integrator,
-                                                      platform)
+        """Starts a simple simulation using the selected system"""
+        self.integrator = simtk.openmm.LangevinIntegrator(temperature, 5 / unit.picosecond, 2 * unit.femtoseconds)
+        self.platform = simtk.openmm.Platform.getPlatformByName(platform_name)
+        self.simulation = simtk.openmm.app.Simulation(self.top, self._wrapped_system, self.integrator, self.platform)
         self.simulation.context.setPositions(self.coord.positions)
         return self.simulation
 
@@ -725,7 +725,7 @@ class System(simtk.openmm.System):
         return energy
 
     def recomputeEnergy(self, trajectory, platform_name='Reference'):
-        """Returns the potential energy of each snapshot in a trajectory"""
+        """Returns the potential energy of each snapshot in a xyz trajectory"""
         traj = parse_xyz(trajectory)
         self.initializeMD(platform_name=platform_name)
         energies = []
@@ -1284,7 +1284,7 @@ class Electrostatics(Force, simtk.openmm.CustomNonbondedForce):
         C = 100 * unit.millimolar
         e = 249.4 - 0.788 * (T / unit.kelvin) + 7.2E-4 * (T / unit.kelvin) ** 2
         a = 1 - 0.2551 * (C / unit.molar) + 5.151E-2 * (C / unit.molar) ** 2 - 6.889E-3 * (C / unit.molar) ** 3
-        print(e, a)
+        #print(e, a)
         dielectric = e * a
         # Debye length
         kb = simtk.unit.BOLTZMANN_CONSTANT_kB  # Bolztmann constant
@@ -1296,7 +1296,7 @@ class Electrostatics(Force, simtk.openmm.CustomNonbondedForce):
         ldby = ldby.in_units_of(unit.nanometer)
         denominator = 4 * np.pi * pv * dielectric / (Na * ec ** 2)
         denominator = denominator.in_units_of(unit.kilocalorie_per_mole**-1 * unit.nanometer**-1)
-        print(ldby, denominator)
+        #print(ldby, denominator)
 
         electrostaticForce = simtk.openmm.CustomNonbondedForce("""energy;
                                                                 energy=q1*q2*exp(-r/dh_length)/denominator/r;""")
@@ -1333,17 +1333,6 @@ class Electrostatics(Force, simtk.openmm.CustomNonbondedForce):
 
         # add neighbor exclusion
         addNonBondedExclusions(self.dna, self.force, self.OpenCLPatch)
-
-
-forces = dict(Bond=Bond,
-              Angle=Angle,
-              Stacking=Stacking,
-              Dihedral=Dihedral,
-              BasePair=BasePair,
-              CrossStacking=CrossStacking,
-              Exclusion=Exclusion,
-              Electrostatics=Electrostatics)
-
 
 class ProteinDNAForce(Force):
     def __init__(self, dna, protein):
@@ -1431,7 +1420,7 @@ class ElectrostaticsProteinDNA(ProteinDNAForce):
 
     def reset(self):
         dielectric = 78 # e * a
-        print(dielectric)
+        #print(dielectric)
         # Debye length
         Na = simtk.unit.AVOGADRO_CONSTANT_NA  # Avogadro number
         ec = 1.60217653E-19 * unit.coulomb  # proton charge
@@ -1440,7 +1429,7 @@ class ElectrostaticsProteinDNA(ProteinDNAForce):
         ldby = 1.2 * unit.nanometer # np.sqrt(dielectric * pv * kb * T / (2.0 * Na * ec ** 2 * C))
         denominator = 4 * np.pi * pv * dielectric / (Na * ec ** 2)
         denominator = denominator.in_units_of(unit.kilocalorie_per_mole**-1 * unit.nanometer**-1)
-        print(ldby, denominator)
+        #print(ldby, denominator)
 
         electrostaticForce = simtk.openmm.CustomNonbondedForce("""energy;
                                                                 energy=q1*q2*exp(-r/inter_dh_length)/inter_denominator/r;""")
@@ -1508,17 +1497,33 @@ class ElectrostaticsProteinDNA(ProteinDNAForce):
         # addExclusions
         addNonBondedExclusions(self.dna, self.force)
 
+# List forces
+forces = dict(Bond=Bond,
+              Angle=Angle,
+              Stacking=Stacking,
+              Dihedral=Dihedral,
+              BasePair=BasePair,
+              CrossStacking=CrossStacking,
+              Exclusion=Exclusion,
+              Electrostatics=Electrostatics)
+
+protein_dna_forces=dict(ExclusionProteinDNA=ExclusionProteinDNA,
+                        ElectrostaticsProteinDNA=ElectrostaticsProteinDNA)
+
 
 # Unit testing
 def test_DNA_from_pdb():
+    """ Test correct DNA initialization from PDB"""
     mol = DNA.fromPDB("Tests/1svc/1svc.pdb")
 
 
 def test_DNA_from_gro():
+    """ Test correct DNA initialization from gromacs files"""
     pass
 
 
 def test_DNA_from_seq():
+    """ Test correct DNA initialization from sequence files"""
     pass
 
 
@@ -1704,3 +1709,26 @@ class TestEnergies:
             folder = test['Folder']
             yield self._test_energy, test['Energy term'], f'{folder}/{test.Log}', f'{folder}/{test.Trajectory}', \
                   test['Name'], folder, dna_type, test['periodic size'], test['Platform']
+
+# Some typical errors
+class BaseError(Exception):
+    pass
+
+
+class DNATypeError(BaseError):
+    """Only some DNA types are defined (A, B, B_curved)"""
+
+    def __init__(self, dna):
+        self.dna = dna
+        self.message = f'DNA type {dna.DNAtype} not defined in the configuration file\n'
+        defined_types = dna.angle_definition['DNA'].unique()
+        self.message += f'Only the types {str(defined_types)} were defined'
+        print(self.message)
+
+class X3DNAnotFound(BaseError):
+    """Only some DNA types are defined (A, B, B_curved)"""
+
+    def __init__(self):
+        self.message = f'The $X3DNA variable not found in the environment.\n Make sure X3DNA is installed and the environment ' \
+                        f'variable $X3DNA is defined.'
+        print(self.message)
