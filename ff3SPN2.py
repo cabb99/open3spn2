@@ -801,8 +801,8 @@ class Force(object):
 
 
 class Bond(Force, simtk.openmm.CustomBondForce):
-    def __init__(self, dna):
-        self.force_group = 6
+    def __init__(self, dna, force_group=6):
+        self.force_group = force_group
         super().__init__(dna)
 
     def getParameterNames(self):
@@ -836,8 +836,8 @@ class Bond(Force, simtk.openmm.CustomBondForce):
 
 class Angle(Force, simtk.openmm.HarmonicAngleForce):
 
-    def __init__(self, dna):
-        self.force_group = 7
+    def __init__(self, dna, force_group=7):
+        self.force_group = force_group
         super().__init__(dna)
 
     def reset(self):
@@ -854,8 +854,8 @@ class Angle(Force, simtk.openmm.HarmonicAngleForce):
 
 
 class Stacking(Force, simtk.openmm.CustomCompoundBondForce):
-    def __init__(self, dna):
-        self.force_group = 8
+    def __init__(self, dna, force_group=8):
+        self.force_group = force_group
         super().__init__(dna)
 
     def reset(self):
@@ -889,8 +889,8 @@ class Stacking(Force, simtk.openmm.CustomCompoundBondForce):
 
 
 class Dihedral(Force, simtk.openmm.CustomTorsionForce):
-    def __init__(self, dna):
-        self.force_group = 9
+    def __init__(self, dna, force_group=9):
+        self.force_group = force_group
         super().__init__(dna)
 
     def reset(self):
@@ -918,8 +918,8 @@ class Dihedral(Force, simtk.openmm.CustomTorsionForce):
 
 
 class BasePair(Force, simtk.openmm.CustomHbondForce):
-    def __init__(self, dna, OpenCLPatch=True):
-        self.force_group = 10
+    def __init__(self, dna, force_group=10, OpenCLPatch=True):
+        self.force_group = force_group
         super().__init__(dna, OpenCLPatch)
 
     def reset(self):
@@ -1032,9 +1032,9 @@ class BasePair(Force, simtk.openmm.CustomHbondForce):
 
 
 class CrossStacking(Force):
-    def __init__(self, dna, OpenCLPatch=True):
-        self.force_group = 11
-        super().__init__(dna,OpenCLPatch)
+    def __init__(self, dna, force_group=11, OpenCLPatch=True):
+        self.force_group = force_group
+        super().__init__(dna, OpenCLPatch)
 
     def reset(self):
         def crossStackingForce(parametersOnDonor=False):
@@ -1230,11 +1230,8 @@ def addNonBondedExclusions(dna, force, OpenCLPatch=True):
 
 
 class Exclusion(Force, simtk.openmm.CustomNonbondedForce):
-    def __init__(self, dna):
-        try:
-            self.force_group
-        except AttributeError:
-            self.force_group = 12
+    def __init__(self, dna, force_group = 12):
+        self.force_group = force_group
         super().__init__(dna)
 
     def reset(self):
@@ -1279,11 +1276,8 @@ class Exclusion(Force, simtk.openmm.CustomNonbondedForce):
 
 
 class Electrostatics(Force, simtk.openmm.CustomNonbondedForce):
-    def __init__(self, dna):
-        try:
-            self.force_group
-        except AttributeError:
-            self.force_group = 13
+    def __init__(self, dna, force_group=13):
+        self.force_group = force_group
         super().__init__(dna)
 
     def reset(self):
