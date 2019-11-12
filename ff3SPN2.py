@@ -186,7 +186,7 @@ class DNA(object):
         self.sequence = pandas.Series(sequences)
         return self.sequence
 
-    def computeGeometry(self, sequence=None):
+    def computeGeometry(self, sequence=None, temp_pdb='template.pdb'):
         """ This function requires X3DNA. It returns a pdb table containing the expected DNA structure"""
         #print("Computing geometry")
         pair = self.config['Base Pair Geometry']
@@ -222,7 +222,7 @@ class DNA(object):
         subprocess.check_output([f'{location_x3dna}/bin/rebuild',
                                  '-atomic', 'rebuild_x3dna_parameters.par',
                                  'x3dna_template.pdb'])
-        template_dna = self.fromPDB('x3dna_template.pdb')
+        template_dna = self.fromPDB('x3dna_template.pdb', temp_pdb)
         template = template_dna.atoms.copy()
         try:
             self.atoms
@@ -481,7 +481,7 @@ class DNA(object):
         return self
 
     @classmethod
-    def fromPDB(cls, pdb_file, dna_type='B_curved'):
+    def fromPDB(cls, pdb_file, dna_type='B_curved', output_pdb='clean.pdb'):
         """Creates a DNA object from a complete(atomistic) pdb file"""
         self = cls()
         pdb = fixPDB(pdb_file)
@@ -491,7 +491,7 @@ class DNA(object):
         self.DNAtype = dna_type
         self.parseConfigurationFile()
         self.computeTopology()
-        self.writePDB()
+        self.writePDB(output_pdb)
         #self.atomistic_model=temp
         return self
 
@@ -572,7 +572,7 @@ class DNA(object):
 #        pass
 
     @classmethod
-    def fromSequence(cls, sequence,dna_type='B_curved'):
+    def fromSequence(cls, sequence,dna_type='B_curved', output_pdb='clean.pdb'):
         """ Initializes a DNA object from a DNA sequence """
         self = cls()
         self.parseConfigurationFile()
@@ -581,11 +581,11 @@ class DNA(object):
         self.computeGeometry(sequence)
 
         # Make a clean pdb file
-        self = self.fromPDB('x3dna_template.pdb', dna_type=dna_type)
+        self = self.fromPDB('x3dna_template.pdb', dna_type=dna_type, output_pdb=output_pdb)
         return self
 
     @classmethod
-    def fromXYZ(cls, xyz_file, dnatype='B_curved'):
+    def fromXYZ(cls, xyz_file, dnatype='B_curved', output_pdb='clean.pdb'):
         """ Initializes DNA object from xyz file (as seen on the examples) """
         # Parse the file
         self = cls()
@@ -627,7 +627,7 @@ class DNA(object):
         self.DNAtype = dnatype
         self.parseConfigurationFile()
         self.computeTopology()
-        self.writePDB()
+        self.writePDB(output_pdb)
         return self
 
 
