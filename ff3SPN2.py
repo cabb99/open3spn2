@@ -186,7 +186,7 @@ class DNA(object):
         self.sequence = pandas.Series(sequences)
         return self.sequence
 
-    def computeGeometry(self, sequence=None, temp_pdb='template.pdb'):
+    def computeGeometry(self, sequence=None, temp_name='temp'):
         """ This function requires X3DNA. It returns a pdb table containing the expected DNA structure"""
         #print("Computing geometry")
         pair = self.config['Base Pair Geometry']
@@ -212,7 +212,7 @@ class DNA(object):
         except KeyError as ex:
             raise X3DNAnotFound from ex
 
-        with open('rebuild_x3dna_parameters.par', 'w+') as par:
+        with open(f'{temp_name}_parameters.par', 'w+') as par:
             par.write(f' {len(data)} # Number of base pairs\n')
             par.write(f' 0 # local base-pair & step parameters\n')
             par.write('#')
@@ -220,9 +220,9 @@ class DNA(object):
         subprocess.check_output([f'{location_x3dna}/bin/x3dna_utils',
                                  'cp_std', 'BDNA'])
         subprocess.check_output([f'{location_x3dna}/bin/rebuild',
-                                 '-atomic', 'rebuild_x3dna_parameters.par',
-                                 'x3dna_template.pdb'])
-        template_dna = self.fromPDB('x3dna_template.pdb', temp_pdb)
+                                 '-atomic', f'{temp_name}_parameters.par',
+                                 f'{temp_name}_template.pdb'])
+        template_dna = self.fromPDB(f'{temp_name}_template.pdb', output_pdb=f'{temp_name}_temp.pdb')
         template = template_dna.atoms.copy()
         try:
             self.atoms
@@ -247,7 +247,7 @@ class DNA(object):
         original.index = self.atoms.index
         return original
 
-    def computeTopology(self, template_from_X3DNA=False):
+    def computeTopology(self, template_from_X3DNA=False, temp_name='temp'):
         """ Creates tables of bonds, angles and dihedrals with their respective parameters (bonded interactions).
         3SPN2.C requires a template structure to calculate the equilibrium bonds, angles and dihedrals.
         If template_from_structure is True, it will try to compute the equilibrium geometry using X3DNA.
@@ -268,7 +268,7 @@ class DNA(object):
 
         # Compute B_curved geometry if needed
         if DNAtype == 'B_curved' and template_from_X3DNA:
-            self.template_atoms = self.computeGeometry()
+            self.template_atoms = self.computeGeometry(temp_name=temp_name)
         else:
             self.template_atoms = self.atoms
         # Make an index to build the topology
@@ -572,16 +572,16 @@ class DNA(object):
 #        pass
 
     @classmethod
-    def fromSequence(cls, sequence,dna_type='B_curved', output_pdb='clean.pdb'):
+    def fromSequence(cls, sequence, dna_type='B_curved', output_pdb='clean.pdb', temp_name='temp'):
         """ Initializes a DNA object from a DNA sequence """
         self = cls()
         self.parseConfigurationFile()
-        sequence=pandas.Series([a for a in sequence], index=[('A',i) for i in range(len(sequence))])
+        sequence=pandas.Series([a for a in sequence], index=[('A', i) for i in range(len(sequence))])
         # Make a possible structure
-        self.computeGeometry(sequence)
+        self.computeGeometry(sequence, temp_name=temp_name)
 
         # Make a clean pdb file
-        self = self.fromPDB('x3dna_template.pdb', dna_type=dna_type, output_pdb=output_pdb)
+        self = self.fromPDB(f'{temp_name}_template.pdb', dna_type=dna_type, output_pdb=output_pdb)
         return self
 
     @classmethod
