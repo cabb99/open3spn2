@@ -219,7 +219,7 @@ class DNA(object):
             par.write(data.to_csv(sep=' ', index=False))
 
         # Attempting to call rebuild multiple times
-        # This function fails sometimes when called by multiple
+        # This function fails sometimes when called by multiple because a file with the same name is created
         attempt = 0
         max_attempts = 10
         while attempt < max_attempts:
@@ -449,7 +449,7 @@ class DNA(object):
         return pdb_file
 
     @classmethod
-    def fromCoarsePDB(cls, pdb_file, dna_type='B_curved'):
+    def fromCoarsePDB(cls, pdb_file, dna_type='B_curved', temp_name='temp'):
         """Initializes a DNA object from a pdb file containing the Coarse Grained atoms"""
         self = cls()
 
@@ -488,12 +488,12 @@ class DNA(object):
         # Initialize the system from the pdb
         self.DNAtype = dna_type
         self.parseConfigurationFile()
-        self.computeTopology()
+        self.computeTopology(temp_name=temp_name)
         self.pdb_file = pdb_file
         return self
 
     @classmethod
-    def fromPDB(cls, pdb_file, dna_type='B_curved', output_pdb='clean.pdb'):
+    def fromPDB(cls, pdb_file, dna_type='B_curved', output_pdb='clean.pdb', temp_name='temp'):
         """Creates a DNA object from a complete(atomistic) pdb file"""
         self = cls()
         pdb = fixPDB(pdb_file)
@@ -502,7 +502,7 @@ class DNA(object):
         self.atoms = self.CoarseGrain(pdb_table)
         self.DNAtype = dna_type
         self.parseConfigurationFile()
-        self.computeTopology()
+        self.computeTopology(temp_name=temp_name)
         self.writePDB(output_pdb)
         #self.atomistic_model=temp
         return self
@@ -597,7 +597,7 @@ class DNA(object):
         return self
 
     @classmethod
-    def fromXYZ(cls, xyz_file, dnatype='B_curved', output_pdb='clean.pdb'):
+    def fromXYZ(cls, xyz_file, dnatype='B_curved', output_pdb='clean.pdb', temp_name='temp'):
         """ Initializes DNA object from xyz file (as seen on the examples) """
         # Parse the file
         self = cls()
@@ -638,7 +638,7 @@ class DNA(object):
         self.atoms['resname'] = [res_ix[(r['chainID'], r['resSeq'])] for i, r in self.atoms.iterrows()]
         self.DNAtype = dnatype
         self.parseConfigurationFile()
-        self.computeTopology()
+        self.computeTopology(temp_name=temp_name)
         self.writePDB(output_pdb)
         return self
 
