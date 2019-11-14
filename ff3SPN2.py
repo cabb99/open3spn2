@@ -217,11 +217,23 @@ class DNA(object):
             par.write(f' 0 # local base-pair & step parameters\n')
             par.write('#')
             par.write(data.to_csv(sep=' ', index=False))
-        subprocess.check_output([f'{location_x3dna}/bin/x3dna_utils',
-                                 'cp_std', 'BDNA'])
-        subprocess.check_output([f'{location_x3dna}/bin/rebuild',
-                                 '-atomic', f'{temp_name}_parameters.par',
-                                 f'{temp_name}_template.pdb'])
+
+        # Attempting to call rebuild multiple times
+        # This function fails sometimes when called by multiple
+        attempt = 0
+        max_attempts = 10
+        while attempt < max_attempts:
+            try:
+                subprocess.check_output([f'{location_x3dna}/bin/x3dna_utils',
+                                         'cp_std', 'BDNA'])
+                subprocess.check_output([f'{location_x3dna}/bin/rebuild',
+                                         '-atomic', f'{temp_name}_parameters.par',
+                                         f'{temp_name}_template.pdb'])
+                break
+            except subprocess.CalledProcessError as e:
+                attempt += 1
+                if attempt == max_attempts:
+                    print(f"subprocess.CalledProcessError failed {max_attempts} times {e.args[0]}: {e.args[1]}")
         template_dna = self.fromPDB(f'{temp_name}_template.pdb', output_pdb=f'{temp_name}_temp.pdb')
         template = template_dna.atoms.copy()
         try:
