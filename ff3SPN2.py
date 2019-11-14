@@ -709,9 +709,9 @@ class System(simtk.openmm.System):
             self.addForce(force)
             self.forces.update({force_name: force})
 
-    def initializeMD(self, temperature=300 * unit.kelvin, platform_name='Reference'):
+    def initializeMD(self, temperature=300 * unit.kelvin, platform_name='Reference', damping=2/unit.picosecond, timestep=2*unit.femtoseconds):
         """Starts a simple simulation using the selected system"""
-        self.integrator = simtk.openmm.LangevinIntegrator(temperature, 5 / unit.picosecond, 2 * unit.femtoseconds)
+        self.integrator = simtk.openmm.LangevinIntegrator(temperature, damping, timestep)
         self.platform = simtk.openmm.Platform.getPlatformByName(platform_name)
         self.simulation = simtk.openmm.app.Simulation(self.top, self._wrapped_system, self.integrator, self.platform)
         self.simulation.context.setPositions(self.coord.positions)
