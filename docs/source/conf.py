@@ -14,7 +14,9 @@
 #
 import os
 import sys
-#sys.path.insert(0, os.path.abspath('..'))
+sys.path.insert(0, os.path.abspath('..'))
+sys.path.insert(0, os.path.abspath('../../'))
+sys.path.insert(0, os.path.abspath('../../..'))
 #sys.path.insert(0, os.path.abspath('/home/cab22/Programs/openAWSEM'))
 #sys.path.insert(0, os.path.abspath('/home/cab22/Programs'))
 
