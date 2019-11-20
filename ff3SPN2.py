@@ -880,6 +880,13 @@ class Stacking(Force, simtk.openmm.CustomCompoundBondForce):
                                                                 pair2=step(dt+pi)*step(pi-dt);
                                                                 f=1-cos(dt)^2;
                                                                 dt=rng*(angle(p1,p2,p3)-t0);""")
+#        stackingForce = simtk.openmm.CustomCompoundBondForce(3, """max(step(-dr),f2)*epsilon*(1-exp(-alpha*(dr)))^2-f2*epsilon;
+#                                                                dr=distance(p2,p3)-sigma;
+#                                                                f2=max(f*pair2,pair1);
+#                                                                pair1=step(dt+pi/2)*step(pi/2-dt);
+#                                                                pair2=step(dt+pi)*step(pi-dt);
+#                                                                f=1-cos(dt)^2;
+#                                                                dt=rng*(angle(p1,p2,p3)-t0);""")
         stackingForce.setUsesPeriodicBoundaryConditions(self.periodic)
         stackingForce.addPerBondParameter('epsilon')
         stackingForce.addPerBondParameter('sigma')
@@ -1346,6 +1353,7 @@ class Electrostatics(Force, simtk.openmm.CustomNonbondedForce):
 
         # add neighbor exclusion
         addNonBondedExclusions(self.dna, self.force, self.OpenCLPatch)
+
 
 class ProteinDNAForce(Force):
     def __init__(self, dna, protein):
