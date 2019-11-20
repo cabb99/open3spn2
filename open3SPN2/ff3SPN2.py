@@ -1295,13 +1295,15 @@ class Exclusion(Force, simtk.openmm.CustomNonbondedForce):
 
 
 class Electrostatics(Force, simtk.openmm.CustomNonbondedForce):
-    def __init__(self, dna, force_group=13):
+    def __init__(self, dna, force_group=13, temperature=300*unit.kelvin, salt_concentration=100*unit.millimolar):
         self.force_group = force_group
+        self.T = temperature
+        self.C = salt_concentration
         super().__init__(dna)
 
     def reset(self):
-        T = 300 * unit.kelvin
-        C = 100 * unit.millimolar
+        T = self.T
+        C = self.C
         e = 249.4 - 0.788 * (T / unit.kelvin) + 7.2E-4 * (T / unit.kelvin) ** 2
         a = 1 - 0.2551 * (C / unit.molar) + 5.151E-2 * (C / unit.molar) ** 2 - 6.889E-3 * (C / unit.molar) ** 3
         #print(e, a)
