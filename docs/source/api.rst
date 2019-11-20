@@ -18,16 +18,6 @@ System
     
     .. rubric:: Methods
     
-    .. autosummary::
-   {% for item in methods %}
-      ~{{ name }}.{{ item }}
-   {%- endfor %}
-   {% endif %}
-   {% endblock %}
-    
-    <Describe instantiation here!>
-
-
 DNA Forces
 ------------------
 .. autoclass:: ff3SPN2.Bond
