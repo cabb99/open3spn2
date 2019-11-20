@@ -1,2 +1,11 @@
+biopython
+matplotlib
+pandas
+numpy
+scipy
+mdtraj
 openmm
-
+parmed
+pdbfixer
+nose
+simtk
