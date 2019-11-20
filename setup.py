@@ -1,15 +1,17 @@
 from distutils.core import setup
 setup(
-      name = 'open3spn2',
-      packages = ['open3spn2'],
-      version = '0.1.0',
+      name = 'open3SPN2',
+      packages = ['open3SPN2'],
+      version = '0.1.2',
       license='MIT',
       description = 'Implementation of 3SPN2 and 3SPN2.C forcefields in openmm',
       author = 'Carlos Bueno', 
       author_email = 'carlos.bueno@rice.edu', 
       url = 'https://github.com/cabb99/open3spn2', 
-      download_url = 'https://github.com/cabb99/open3spn2/archive/0.1.0.tar.gz',
+      download_url = 'https://github.com/cabb99/open3spn2/archive/0.1.2.tar.gz',
       keywords = ['dna', 'forcefield', 'openmm'],
+      package_data={'open3SPN2': ['3SPN2.conf','3SPN2.xml']},
+      include_package_data=True,
       install_requires=[
               'biopython',
               'matplotlib',

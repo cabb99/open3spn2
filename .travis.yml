@@ -30,7 +30,7 @@ script:
 - conda list
 - conda env list
 - python -c "help('modules')"
-- nosetests ff3SPN2.py
+- nosetests open3SPN2/ff3SPN2.py
 notifications:
   slack:
     secure: AI0yyURG2eMEKuQResaLfVwj0G+Rb49MIw/PNacgOJqUiYJ7bEPWbSuQ61ItInKHhV3KWCtFSsgRxp96RYghSOcHwH8TGlVDQ4ZzjheFP+DGQRN3ORQsr/jq2QhjTwcADi4otUqRKzeVMq+WHaGsXq2mahvlcXkuhjTk0h1vH+9B+/v+IF1qZfdKOjhrGaeu2vwZ4m+eIuigHLZICC6kXBxZ7LVBfrJt2+lcdwgnnpVOdjNwYPLXnDBrkw/qqrX/gHkklUgEH89ZuhSIh2fwGPHi1mIgxTxiiwOpNSTTA6mEXEv98Z4VBf1P7U22qMCRwvcS9ESZHsE5wyZqxFgNGjp9xZJliSGtc8X2aBNrOOwSCEY6LusWSgJtYLYzbgJhQL526qVyS8Rc3hgh4P3JfJT5TtvSA4SmSkErVtXOOrej4ipYbOJf1DvKE/VjAVKurX/OXi0obmkpwrKhbYR3nufIPchQMDjElh3At2/jOB256TMpHcKMpwgae4gwagkkZ9HjanVOwW/B3FVM3ENEliyVEJtdUmko//66NvrsFRU4hzAHANzJulxQ1xO2JyDANBlQCG684V3TPkYYcImAPspzsbzA6fbiup1eeqUCUBY8/jK/2ZimXwDm8CLpOYuPDqnB9L9klKX2Xn1LR2MfhGYp2lWMu5EuIn0O61rcUTc=
