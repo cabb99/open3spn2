@@ -25,4 +25,4 @@ python:
    system_packages: true
 
 conda:
-  environment: environment.yml
+  environment: environment.yaml
