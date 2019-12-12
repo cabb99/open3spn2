@@ -880,13 +880,6 @@ class Stacking(Force, simtk.openmm.CustomCompoundBondForce):
                                                                 pair2=step(dt+pi)*step(pi-dt);
                                                                 f=1-cos(dt)^2;
                                                                 dt=rng*(angle(p1,p2,p3)-t0);""")
-#        stackingForce = simtk.openmm.CustomCompoundBondForce(3, """max(step(-dr),f2)*epsilon*(1-exp(-alpha*(dr)))^2-f2*epsilon;
-#                                                                dr=distance(p2,p3)-sigma;
-#                                                                f2=max(f*pair2,pair1);
-#                                                                pair1=step(dt+pi/2)*step(pi/2-dt);
-#                                                                pair2=step(dt+pi)*step(pi-dt);
-#                                                                f=1-cos(dt)^2;
-#                                                                dt=rng*(angle(p1,p2,p3)-t0);""")
         stackingForce.setUsesPeriodicBoundaryConditions(self.periodic)
         stackingForce.addPerBondParameter('epsilon')
         stackingForce.addPerBondParameter('sigma')
@@ -1077,7 +1070,9 @@ class CrossStacking(Force):
                                                         dt3      = rng_BP*(t3-t03);
                                                         dtCS     = rng_CS*(tCS-t0CS);
                                                         tCS      = angle(d2,d1,a3);
-                                                        t3       = acos(sin(t1)*sin(t2)*cos(phi)-cos(t1)*cos(t2));
+                                                        t3       = acos(cost3lim);
+                                                        cost3lim = min(max(cost3,-0.99999999),0.99999999);
+                                                        cost3    = sin(t1)*sin(t2)*cos(phi)-cos(t1)*cos(t2);
                                                         t1       = angle(d2,d1,a1);
                                                         t2       = angle(d1,a1,a2);
                                                         phi      = dihedral(d2,d1,a1,a2);''')
