@@ -23,11 +23,11 @@ From source code
 The source code is available at https://github.com/cabb99/open3spn2/
 
 
-From pip
+From conda
 --------
 
 .. code-block:: bash
 
-    $ pip install open3spn2
+    $ conda install -c wolynes-lab open3spn2
 
 .. _X3DNA: https://x3dna.org/
