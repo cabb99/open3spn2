@@ -25,5 +25,5 @@ python:
       path: .
    system_packages: true
 
-#conda:
-#  environment: environment.yaml
+conda:
+  environment: .readthedocs_environment.yaml

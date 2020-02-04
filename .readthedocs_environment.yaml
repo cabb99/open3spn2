@@ -1,0 +1,8 @@
+name: py36
+channels:
+- omnia
+dependencies:
+- mdtraj
+- openmm
+- parmed
+- pdbfixer
