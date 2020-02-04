@@ -1,4 +1,5 @@
 [![Build Status](https://travis-ci.org/cabb99/open3spn2.svg?branch=master)](https://travis-ci.org/cabb99/open3spn2?branch=master)
+[![Documentation Status](https://readthedocs.org/projects/open3spn2/badge/?version=latest)](https://open3spn2.readthedocs.io/en/latest/?badge=latest)
 # Open-3SPN2
 Implementation of the coarse-grained molecular model of DNA in OpenMM
 
