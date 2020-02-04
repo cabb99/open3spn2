@@ -10,20 +10,20 @@ DNA from sequence
 
 This section allows you to quickly simulate a piece of DNA. 
 
-First import the ff3SPN2 module.
+First import the open3SPN2 module.
 
 .. testcode::
     
-    import ff3SPN2
+    import open3SPN2
 
-If you obtain a ``ModuleNotFoundError`` error then you may need to check that ``ff3SPN2`` is in the installation path as detailed in :doc:`installation`.
+If you obtain a ``ModuleNotFoundError`` error then you may need to check that ``open3SPN2`` is in the installation path as detailed in :doc:`installation`.
 
 After importing the module, follow the next steps to create a DNA system and add the 3SPN2 forces.
 Make sure you have installed X3DNA before this step.
 
 .. testsetup:: *
 
-    import ff3SPN2
+    import open3SPN2
 
 .. testcode::
     
@@ -31,7 +31,7 @@ Make sure you have installed X3DNA before this step.
     # DNA type can be changed to 'A' or 'B'
     
     seq='ATACAAAGGTGCGAGGTTTCTATGCTCCCACG'
-    dna=ff3SPN2.DNA.fromSequence(seq,dna_type='B_curved')
+    dna=open3SPN2.DNA.fromSequence(seq,dna_type='B_curved')
     
     # Compute the topology for the DNA structure.
     # Since the dna was generated from the sequence using X3DNA,
@@ -43,7 +43,7 @@ Make sure you have installed X3DNA before this step.
     # To set periodic boundary conditions (periodicBox=[50,50,50]).
     # The periodic box size is in nanometers.
     dna.periodic=False
-    s=ff3SPN2.System(dna, periodicBox=None)
+    s=open3SPN2.System(dna, periodicBox=None)
     
     #Add 3SPN2 forces
     s.add3SPN2forces(verbose=True)
