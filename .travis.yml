@@ -2,15 +2,15 @@ language: python
 python: 3.6
 matrix:
   include:
-  - sudo: required
-    dist: trusty
-    env: 
-      ==CPU_OPENCL==
-      - OPENCL=true
-      - CUDA=false
-    addons:
-      apt:
-        packages: []
+    - sudo: required
+      dist: xenial
+      env: ==CPU_OPENCL==
+           OPENCL=true
+           CUDA=false
+      addons:
+        apt:
+          packages: []
+
 before_install:
 - if [[ "$OPENCL" == "true" ]]; then wget http://s3.amazonaws.com/omnia-ci/AMD-APP-SDKInstaller-v3.0.130.135-GA-linux64.tar.bz2;
   tar -xjf AMD-APP-SDK*.tar.bz2; AMDAPPSDK=${HOME}/AMDAPPSDK; export OPENCL_VENDOR_PATH=${AMDAPPSDK}/etc/OpenCL/vendors;
