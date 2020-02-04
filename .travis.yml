@@ -4,7 +4,10 @@ matrix:
   include:
   - sudo: required
     dist: trusty
-    env: "==CPU_OPENCL== OPENCL=true CUDA=false"
+    env: 
+      ==CPU_OPENCL==
+      - OPENCL=true
+      - CUDA=false
     addons:
       apt:
         packages: []
