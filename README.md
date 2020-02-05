@@ -15,9 +15,12 @@ Installation of the open3SPN2 repository is available through anaconda. Some of 
 
 ```conda install -c wolynes-lab open3spn2```
 
+It is also necessary to install [X3DNA](http://x3dna.org/) and set the environment variable `$X3DNA` to the correct location. 
+For protein-DNA simulations you will also need to install [openAWSEM](http://openawsem.org/) and add the openAWSEM path to the `$PYTHONPATH` environment variable.
+
 ## Documentation
 
-The documentation and tutorials are hosted in [readthedocs](https://open3spn2.readthedocs.io/en/latest/).
+Further documentation and tutorials are hosted in [readthedocs](https://open3spn2.readthedocs.io/en/latest/).
 
 ## Citations
 
