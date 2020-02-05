@@ -12,6 +12,5 @@ dependencies:
 - fftw3f
 - mdtraj
 - openmm
-- parmed
 - pdbfixer
 - nose

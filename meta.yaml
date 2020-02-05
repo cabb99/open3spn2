@@ -8,33 +8,24 @@ source:
   git_depth: -1 # (Defaults to -1/not shallow)
 
 build:
+  noarch: python
   number: 0
   script: python setup.py install --record=record.txt
 
 requirements:
   host:
-    - biopython
-    - mdtraj
-    - nose
-    - numpy>=1.16.2
-    - openmm
-    - pandas
-    - parmed
-    - pdbfixer
     - pip
     - python
-    - scipy
   run:
+    - python
     - biopython
     - mdtraj
     - nose
     - numpy
     - openmm
     - pandas
-    - parmed
-    - pdbfixer
-    - python
     - scipy
+    - pdbfixer
 
 test:
   imports:
@@ -44,7 +35,7 @@ about:
   home: "https://github.com/cabb99/open3spn2"
   license: MIT
   license_family: MIT
-  license_file: 
+  license_file: LICENSE.txt
   summary: "Implementation of 3SPN2 and 3SPN2.C forcefields in openmm"
   doc_url: 
   dev_url: 

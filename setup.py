@@ -19,7 +19,6 @@ setup(
               'scipy',
               'mdtraj',
               'openmm',
-              'parmed',
               'pdbfixer',
               'nose',
           ],

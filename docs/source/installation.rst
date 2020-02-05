@@ -13,7 +13,6 @@ open3SPN also requires the following python libraries:
 * **scipy**
 * **mdtraj**
 * **openmm**
-* **parmed**
 * **pdbfixer**
 * **nose**
 
