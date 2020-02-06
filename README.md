@@ -9,10 +9,10 @@ A Implementation of the 3SPN.2 and 3SPN.2C coarse-grained molecular model of DNA
 
 ## Installation
 
-Installation of the open3SPN2 repository is available through anaconda. Some of the dependencies (openmm, pdbfixer) are contained in the omnia channel.
+Installation of the open3SPN2 repository is available through anaconda. Some of the dependencies  are contained in the omnia channel (openmm, pdbfixer) or in the conda-forge channel (mdtraj).
 
 ```conda config --append channels omnia```
-
+```conda config --append channels conda-forge```
 ```conda install -c wolynes-lab open3spn2```
 
 It is also necessary to install [X3DNA](http://x3dna.org/) and set the environment variable `$X3DNA` to the correct location. 
