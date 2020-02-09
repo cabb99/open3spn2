@@ -5,18 +5,18 @@
 # Open-3SPN2
 A Implementation of the 3SPN.2 and 3SPN.2C coarse-grained molecular model of DNA in OpenMM.
 
-3SPN.2 and 3SPN.2C are DNA coarse-grained forcefields developed by the [de Pablo Group](https://pme.uchicago.edu/de_pablo_lab/research/dna_folding_and_hybridization/3spn.2/). Each DNA nucleotide is modelled by 3 beads: one bead for the phosphate, a second one for the sugar and a third one nucleobase. This forcefield was adapted by the Wolynes group to model protein-DNA interactions as a complement for the [AWSEM](https://github.com/npschafer/openawsem) coarse-grained protein forcefield.
+3SPN.2 and 3SPN.2C are DNA coarse-grained forcefields developed by the [de Pablo group](https://pme.uchicago.edu/group/de-pablo-group). Each DNA nucleotide is modelled by 3 beads: one bead for the phosphate, a second one for the sugar and a third one nucleobase. These forcefields were adapted by the [Wolynes group](https://wolynes.rice.edu/) to model protein-DNA interactions as a complement for the [AWSEM](https://github.com/npschafer/openawsem) coarse-grained protein forcefield.
 
 ## Installation
 
-Installation of the open3SPN2 repository is available through anaconda. Some of the dependencies (openmm, pdbfixer) are contained in the omnia channel.
+Installation of the open3SPN2 repository is available through anaconda. Some of the dependencies  are contained in the omnia channel (openmm, pdbfixer) or in the conda-forge channel (mdtraj).
 
 ```conda config --append channels omnia```
-
+```conda config --append channels conda-forge```
 ```conda install -c wolynes-lab open3spn2```
 
 It is also necessary to install [X3DNA](http://x3dna.org/) and set the environment variable `$X3DNA` to the correct location. 
-For protein-DNA simulations you will also need to install [openAWSEM](http://openawsem.org/) and add the openAWSEM path to the `$PYTHONPATH` environment variable.
+For protein-DNA simulations you will also need to install [openAWSEM](https://github.com/npschafer/openawsem) and add the openAWSEM path to the `$PYTHONPATH` environment variable.
 
 ## Documentation
 
