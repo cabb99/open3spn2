@@ -12,11 +12,18 @@ A Implementation of the 3SPN.2 and 3SPN.2C coarse-grained molecular model of DNA
 Installation of the open3SPN2 repository is available through anaconda. Some of the dependencies  are contained in the omnia channel (openmm, pdbfixer) or in the conda-forge channel (mdtraj).
 
 ```conda config --append channels omnia```
+
 ```conda config --append channels conda-forge```
+
 ```conda install -c wolynes-lab open3spn2```
 
-It is also necessary to install [X3DNA](http://x3dna.org/) and set the environment variable `$X3DNA` to the correct location. 
-For protein-DNA simulations you will also need to install [openAWSEM](https://github.com/npschafer/openawsem) and add the openAWSEM path to the `$PYTHONPATH` environment variable.
+It is also necessary to install [X3DNA](http://x3dna.org/) >= 2.4 and set the environment variable `$X3DNA` to the location of the installation folder.For protein-DNA simulations you will also need to install [openAWSEM](https://github.com/npschafer/openawsem) and add the openAWSEM path to the `$PYTHONPATH` environment variable. In linux you can set the path variables on `~/.bashrc`.
+
+```export X3DNA=/path/to/x3dna-v2.4```
+
+```export PYTHONPATH=/path/to/openAWSEM:$PYTHONPATH```
+
+Note: open3SPN2 requires the installation of openMM. As of Feb 10 2020, openMM requires 3.5 <= python <= 3.7 and 7.5 <= CUDA <= 10.1.
 
 ## Documentation
 
