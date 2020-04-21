@@ -1071,7 +1071,7 @@ class CrossStacking(Force):
                                                         dtCS     = rng_CS*(tCS-t0CS);
                                                         tCS      = angle(d2,d1,a3);
                                                         t3       = acos(cost3lim);
-                                                        cost3lim = min(max(cost3,-0.999999),0.999999);
+                                                        cost3lim = min(max(cost3,-0.9999),0.9999);
                                                         cost3    = sin(t1)*sin(t2)*cos(phi)-cos(t1)*cos(t2);
                                                         t1       = angle(d2,d1,a1);
                                                         t2       = angle(d1,a1,a2);
