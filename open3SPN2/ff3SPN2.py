@@ -540,7 +540,7 @@ class DNA(object):
             temp.loc[(temp['name'] == "O3\'") & (temp['chainID'] == c), "resSeq"] = list(sel)[1:] + [-1]
             sel = temp.loc[(temp['name'] == "O3\'") & (temp['chainID'] == c), "resname"]
             temp.loc[(temp['name'] == "O3\'") & (temp['chainID'] == c), "resname"] = list(sel)[1:] + [-1]
-        temp = temp[temp['resSeq'] > 0]
+        #temp = temp[temp['resSeq'] > 0]
 
         # Calculate center of mass
         temp['element']=temp['element'].str.strip()
