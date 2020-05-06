@@ -906,7 +906,7 @@ class Dihedral(Force, simtk.openmm.CustomTorsionForce):
         super().__init__(dna)
 
     def reset(self):
-        dihedralForce = simtk.openmm.CustomTorsionForce("""K_periodic*(1-cs)-K_gaussian*exp(-atan(tan(dt))^2/2/sigma^2);
+        dihedralForce = simtk.openmm.CustomTorsionForce("""K_periodic*(1-cs)-K_gaussian*exp(-acos(0.99*cos(dt))^2/2/sigma^2);
                                                       cs=cos(dt);
                                                       dt=theta-t0""")
         # dihedralForce=simtk.openmm.CustomTorsionForce("theta/60.")
@@ -1071,7 +1071,7 @@ class CrossStacking(Force):
                                                         dtCS     = rng_CS*(tCS-t0CS);
                                                         tCS      = angle(d2,d1,a3);
                                                         t3       = acos(cost3lim);
-                                                        cost3lim = min(max(cost3,-0.9999),0.9999);
+                                                        cost3lim = min(max(cost3,-0.99),0.99);
                                                         cost3    = sin(t1)*sin(t2)*cos(phi)-cos(t1)*cos(t2);
                                                         t1       = angle(d2,d1,a1);
                                                         t2       = angle(d1,a1,a2);
