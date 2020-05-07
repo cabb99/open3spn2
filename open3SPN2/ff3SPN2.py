@@ -539,8 +539,9 @@ class DNA(object):
             sel = temp.loc[(temp['name'] == "O3\'") & (temp['chainID'] == c), "resSeq"]
             temp.loc[(temp['name'] == "O3\'") & (temp['chainID'] == c), "resSeq"] = list(sel)[1:] + [-1]
             sel = temp.loc[(temp['name'] == "O3\'") & (temp['chainID'] == c), "resname"]
-            temp.loc[(temp['name'] == "O3\'") & (temp['chainID'] == c), "resname"] = list(sel)[1:] + [-1]
+            temp.loc[(temp['name'] == "O3\'") & (temp['chainID'] == c), "resname"] = list(sel)[1:] + ["remove"]
         #temp = temp[temp['resSeq'] > 0]
+        temp = temp[temp['resname'] != 'remove']
 
         # Calculate center of mass
         temp['element']=temp['element'].str.strip()
