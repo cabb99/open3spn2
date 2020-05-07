@@ -907,7 +907,10 @@ class Dihedral(Force, simtk.openmm.CustomTorsionForce):
         super().__init__(dna)
 
     def reset(self):
-        dihedralForce = simtk.openmm.CustomTorsionForce("""K_periodic*(1-cs)-K_gaussian*exp(-acos(0.99*cos(dt+pi))^2/2/sigma^2);
+        # dihedralForce = simtk.openmm.CustomTorsionForce("""K_periodic*(1-cs)-K_gaussian*exp(-atan(tan(dt))^2/2/sigma^2);
+        #                                               cs=cos(dt);
+        #                                               dt=theta-t0""")
+        dihedralForce = simtk.openmm.CustomTorsionForce("""K_periodic*(1-cs)-K_gaussian*exp(-acos(0.9999*cos(dt))^2/2/sigma^2);
                                                       cs=cos(dt);
                                                       dt=theta-t0""")
         # dihedralForce=simtk.openmm.CustomTorsionForce("theta/60.")
