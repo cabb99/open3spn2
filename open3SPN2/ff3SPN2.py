@@ -1361,12 +1361,14 @@ class ProteinDNAForce(Force):
 
 class ExclusionProteinDNA(ProteinDNAForce):
     """ Protein-DNA exclusion potential"""
-    def __init__(self, dna, protein, force_group=14):
+    def __init__(self, dna, protein, k=1, force_group=14):
+        self.k = k
         self.force_group = force_group
         super().__init__(dna, protein)
 
     def reset(self):
-        exclusionForce = simtk.openmm.CustomNonbondedForce("""energy;
+        k = self.k
+        exclusionForce = simtk.openmm.CustomNonbondedForce(f"""{k}*energy;
                                                             energy=(4*epsilon*((sigma/r)^12-(sigma/r)^6)-offset)*step(cutoff-r);
                                                             offset=4*epsilon*((sigma/cutoff)^12-(sigma/cutoff)^6);
                                                             sigma=0.5*(sigma1+sigma2); 
@@ -1433,7 +1435,8 @@ class ExclusionProteinDNA(ProteinDNAForce):
 
 class ElectrostaticsProteinDNA(ProteinDNAForce):
     """DNA-protein and protein-protein electrostatics."""
-    def __init__(self, dna, protein, force_group=15):
+    def __init__(self, dna, protein, k=1, force_group=15):
+        self.k = k
         self.force_group = force_group
         super().__init__(dna, protein)
 
@@ -1449,8 +1452,8 @@ class ElectrostaticsProteinDNA(ProteinDNAForce):
         denominator = 4 * np.pi * pv * dielectric / (Na * ec ** 2)
         denominator = denominator.in_units_of(unit.kilocalorie_per_mole**-1 * unit.nanometer**-1)
         #print(ldby, denominator)
-
-        electrostaticForce = simtk.openmm.CustomNonbondedForce("""energy;
+        k = self.k
+        electrostaticForce = simtk.openmm.CustomNonbondedForce(f"""{k}*energy;
                                                                 energy=q1*q2*exp(-r/inter_dh_length)/inter_denominator/r;""")
         electrostaticForce.addPerParticleParameter('q')
         electrostaticForce.addGlobalParameter('inter_dh_length', ldby)
