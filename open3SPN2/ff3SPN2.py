@@ -1457,9 +1457,10 @@ class ElectrostaticsProteinDNA(ProteinDNAForce):
         denominator = denominator.in_units_of(unit.kilocalorie_per_mole**-1 * unit.nanometer**-1)
         #print(ldby, denominator)
         k = self.k
-        electrostaticForce = simtk.openmm.CustomNonbondedForce(f"""{k}*energy;
+        electrostaticForce = simtk.openmm.CustomNonbondedForce(f"""k_electro_protein_DNA*energy;
                                                                 energy=q1*q2*exp(-r/inter_dh_length)/inter_denominator/r;""")
         electrostaticForce.addPerParticleParameter('q')
+        electrostaticForce.addGlobalParameter('k_electro_protein_DNA', k)
         electrostaticForce.addGlobalParameter('inter_dh_length', ldby)
         electrostaticForce.addGlobalParameter('inter_denominator', denominator)
 
