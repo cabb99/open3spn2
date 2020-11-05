@@ -265,7 +265,7 @@ Then add the forces
     openAWSEMforces = dict(Connectivity=ffAWSEM.functionTerms.basicTerms.con_term,
                            Chain=ffAWSEM.functionTerms.basicTerms.chain_term,
                            Chi=ffAWSEM.functionTerms.basicTerms.chi_term,
-                           Excl=ffAWSEM.functionTerms.basicTerms.excl_term,
+                           Excl=ffAWSEM.functionTerms.basicTerms.excl_term_v2,
                            rama=ffAWSEM.functionTerms.basicTerms.rama_term,
                            rama_pro=ffAWSEM.functionTerms.basicTerms.rama_proline_term,
                            #rama_ss=ffAWSEM.functionTerms.basicTerms.rama_ssweight_term,
@@ -284,7 +284,11 @@ Then add the forces
             print(force.getNumExclusions())
             open3SPN2.addNonBondedExclusions(dna,force)        
             print(force.getNumExclusions())
-        
+        elif force_name in ['Excl']:
+            force = openAWSEMforces[force_name](protein)
+            print(force.getNumExclusions())
+            open3SPN2.addNonBondedExclusions(dna,force)
+            print(force.getNumExclusions())
         else:
             force = openAWSEMforces[force_name](protein)
         s.addForce(force)
