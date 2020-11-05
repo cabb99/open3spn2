@@ -168,7 +168,7 @@ First Generate a Coarse Grained model
 
     #Merge the models
     import pandas
-    Coarse=pandas.concat([dna_atoms,protein_atoms],sort=False)
+    Coarse=pandas.concat([protein_atoms,dna_atoms],sort=False)
     Coarse.index=range(len(Coarse))
     Coarse.serial=list(Coarse.index)
 
