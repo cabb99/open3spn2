@@ -1024,10 +1024,10 @@ class BasePair(Force, simtk.openmm.CustomHbondForce):
             # Here I am including the same atom twice,
             # it doesn't seem to break things
             for d1, d2 in zip(D1_list, D2_list):
-                self.forces[i].addDonor(d1, d2, d2, parameters)
+                self.forces[i].addDonor(d1, d2, -1, parameters)
                 #print(d1, d2, d2, parameters)
             for a1, a2 in zip(A1_list, A2_list):
-                self.forces[i].addAcceptor(a1, a2, a2)
+                self.forces[i].addAcceptor(a1, a2, -1)
                 #print(a1, a2, a2)
             # Exclude interactions
             D1['donor_id'] = [i for i in range(len(D1))]
