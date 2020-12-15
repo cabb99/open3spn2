@@ -140,11 +140,11 @@ The forces and system in open3SPN can be treated as forces and systems from open
 
 Protein DNA system
 ------------------
-
-First Generate a Coarse Grained model
+You can find this example on the `examples/Protein_DNA <https://github.com/cabb99/open3spn2/tree/master/examples/Protein_DNA>`_ folder. For this example you need to download the structure of the Lambda repressor-operator complex `1mlb.pdb <https://www.rcsb.org/structure/1LMB>`_. You will also need to have installed the `openAWSEM <https://github.com/npschafer/openawsem>`_ library.
 
 .. code:: ipython3
 
+    #Import openAWSEM and open3SPN2 libraries
     import open3SPN2
     import ffAWSEM
 
@@ -265,7 +265,7 @@ Then add the forces
     openAWSEMforces = dict(Connectivity=ffAWSEM.functionTerms.basicTerms.con_term,
                            Chain=ffAWSEM.functionTerms.basicTerms.chain_term,
                            Chi=ffAWSEM.functionTerms.basicTerms.chi_term,
-                           Excl=ffAWSEM.functionTerms.basicTerms.excl_term_v2,
+                           Excl=ffAWSEM.functionTerms.basicTerms.excl_term,
                            rama=ffAWSEM.functionTerms.basicTerms.rama_term,
                            rama_pro=ffAWSEM.functionTerms.basicTerms.rama_proline_term,
                            #rama_ss=ffAWSEM.functionTerms.basicTerms.rama_ssweight_term,
