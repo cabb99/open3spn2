@@ -18,7 +18,6 @@ import numpy as np
 import itertools
 import scipy.spatial.distance as sdist
 import os
-import simtk.openmm.app
 import pdbfixer
 import pandas
 import subprocess
@@ -132,7 +131,7 @@ def pdb2table(pdb):
     for atom, pos in zip(pdb.topology.atoms(), pdb.positions):
         residue = atom.residue
         chain = residue.chain
-        pos = pos.value_in_unit(simtk.unit.angstrom)
+        pos = pos.value_in_unit(unit.angstrom)
         data += [dict(zip(cols, ['ATOM', int(atom.id), atom.name, '',
                                  residue.name, chain.id, int(residue.id), '',
                                  pos[0], pos[1], pos[2], 0, 0,
@@ -1309,8 +1308,8 @@ class Electrostatics(Force, simtk.openmm.CustomNonbondedForce):
         #print(e, a)
         dielectric = e * a
         # Debye length
-        kb = simtk.unit.BOLTZMANN_CONSTANT_kB  # Bolztmann constant
-        Na = simtk.unit.AVOGADRO_CONSTANT_NA  # Avogadro number
+        kb = unit.BOLTZMANN_CONSTANT_kB  # Bolztmann constant
+        Na = unit.AVOGADRO_CONSTANT_NA  # Avogadro number
         ec = 1.60217653E-19 * unit.coulomb  # proton charge
         pv = 8.8541878176E-12 * unit.farad / unit.meter  # dielectric permittivity of vacuum
 
@@ -1448,7 +1447,7 @@ class ElectrostaticsProteinDNA(ProteinDNAForce):
         dielectric = 78 # e * a
         #print(dielectric)
         # Debye length
-        Na = simtk.unit.AVOGADRO_CONSTANT_NA  # Avogadro number
+        Na = unit.AVOGADRO_CONSTANT_NA  # Avogadro number
         ec = 1.60217653E-19 * unit.coulomb  # proton charge
         pv = 8.8541878176E-12 * unit.farad / unit.meter  # dielectric permittivity of vacuum
 
@@ -1711,7 +1710,7 @@ class TestEnergies:
             sf = (np.array(ff) ** 2).sum(axis=1) ** .5
             nan_force_particles = 0
             for j, f in enumerate(sf):
-                if np.isnan(f.value_in_unit(simtk.unit.kilojoule_per_mole / simtk.unit.nanometer)):
+                if np.isnan(f.value_in_unit(unit.kilojoule_per_mole / unit.nanometer)):
                     print(f"Particle {j + 1}/{len(sf)} has force {f} at step {i}")
                     nan_force_particles += 1
             simulation.step(1)
