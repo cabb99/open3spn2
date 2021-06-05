@@ -72,7 +72,7 @@ for i, f in enumerate(s.getForces()):
     else:
         # print('Removed ', f.__class__)
         s.removeForce(j)
-if keepCMMotionRemover == False:
+if not keepCMMotionRemover:
     assert len(s.getForces()) == 0, 'Not all the forces were removed'
 else:
     assert len(s.getForces()) <= 1, 'Not all the forces were removed'
@@ -170,7 +170,7 @@ for force_name, force in forces.items():
                                         groups=2**group)
     energies[force_name] =state.getPotentialEnergy().value_in_unit(energy_unit)
 
-for force_name in forces.keys():
+for force_name in forces:
     print(force_name, round(energies[force_name],6),
           energy_unit.get_symbol())
 

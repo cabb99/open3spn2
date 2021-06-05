@@ -108,7 +108,7 @@ def fixPDB(pdb_file):
     keys = fixer.missingResidues.keys()
     for key in list(keys):
         chain_tmp = chains[key[0]]
-        if key[1] == 0 or key[1] == len(list(chain_tmp.residues())):
+        if key[1] in [0, len(list(chain_tmp.residues()))]:
             del fixer.missingResidues[key]
 
     fixer.findNonstandardResidues()
@@ -344,10 +344,15 @@ class DNA(object):
                 k2 = (c, r + s1, aj)
                 k3 = (c, r + s2, ak)
                 k4 = (c, r + sb, 'S')
-                if k1 in index and k2 in index and k3 in index and k4 in index:
-                    if b1 == '*' or base[index[k1]] == b1:
-                        if b2 == '*' or base[index[k4]] == b2:
-                            data += [[i, index[k1], index[k2], index[k3], index[k4], sb]]
+                if (
+                    k1 in index
+                    and k2 in index
+                    and k3 in index
+                    and k4 in index
+                    and (b1 == '*' or base[index[k1]] == b1)
+                    and (b2 == '*' or base[index[k4]] == b2)
+                ):
+                    data += [[i, index[k1], index[k2], index[k3], index[k4], sb]]
         data = pandas.DataFrame(data, columns=['name', 'aai', 'aaj', 'aak', 'aax', 'sB'])
         self.angles = data.merge(angle_types, left_on='name', right_index=True)
 
@@ -611,14 +616,14 @@ class DNA(object):
         chains = []
         sugar = True
         for t in self.atoms['name']:
-            if t == 'S':
+            if t == 'P':
+                residue += 1
+                sugar = False
+            elif t == 'S':
                 if sugar:
                     residue += 1
                     chain += 1
                 sugar = True
-            if t == 'P':
-                residue += 1
-                sugar = False
             residues += [residue]
             chains += [chain]
         self.atoms['resSeq'] = residues
@@ -661,7 +666,7 @@ class System(simtk.openmm.System):
         if periodicBox is not None:
             self._wrapped_system.setDefaultPeriodicBoxVectors(*np.diag(self.periodic_box))
             self.dna.periodic = True
-        elif periodicBox is None and self.dna.periodic == True:
+        elif self.dna.periodic == True:
             self.dna.periodic = False
             print('Periodic boundary conditions not defined, system would be non periodic')
         self.forces = {}
@@ -740,8 +745,7 @@ class System(simtk.openmm.System):
             self.initializeMD()
         self.setPositions(coords)
         state = self.simulation.context.getState(getEnergy=True)
-        energy = state.getPotentialEnergy().value_in_unit(energy_unit)
-        return energy
+        return state.getPotentialEnergy().value_in_unit(energy_unit)
 
     def recomputeEnergy(self, trajectory, platform_name='Reference'):
         """Returns the potential energy of each snapshot in a xyz trajectory"""
@@ -1203,10 +1207,7 @@ class CrossStacking(Force):
                     # This change has a small effect in B-DNA and curved B-DNA
                     # The second change is to make the interaction symetric and dividing the energy over 2
                     # This also reduces the number of exclusions in the force
-                    if self.OpenCLPatch:
-                        maxn = 6
-                    else:
-                        maxn = 9
+                    maxn = 6 if self.OpenCLPatch else 9
                     if (self.dna.atoms.at[i, 'chainID'] == self.dna.atoms.at[j, 'chainID'] and abs(i - j) <= maxn) or \
                             (not self.OpenCLPatch and i > j):
                         c1.addExclusion(ii, jj)
