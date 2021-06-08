@@ -1680,7 +1680,53 @@ def test_DNA_from_gro():
 
 def test_DNA_from_seq():
     """ Test correct DNA initialization from sequence files"""
-    pass
+    return True #Needs X3DNA
+    seq = 'ATACAAAGGTGCGAGGTTTCTATGCTCCCACG'
+    dna = DNA.fromSequence(seq, dna_type='B_curved')
+
+    # Compute the topology for the DNA structure.
+    # Since the dna was generated from the sequence using X3DNA,
+    # it is not necesary to recompute the geometry.
+
+    dna.computeTopology(template_from_X3DNA=False)
+
+    # Create the system.
+    # To set periodic boundary conditions (periodicBox=[50,50,50]).
+    # The periodic box size is in nanometers.
+    dna.periodic = False
+    s = System(dna, periodicBox=None)
+
+    # Add 3SPN2 forces
+    s.add3SPN2forces(verbose=True)
+
+    import simtk.openmm
+    import simtk.openmm.app
+    import simtk.unit
+    import sys
+    import numpy as np
+
+    # Initialize Molecular Dynamics simulations
+    s.initializeMD(temperature=300 * simtk.unit.kelvin, platform_name='OpenCL')
+    simulation = s.simulation
+
+    # Set initial positions
+    simulation.context.setPositions(s.coord.getPositions())
+
+    energy_unit = simtk.openmm.unit.kilojoule_per_mole
+    # Total energy
+    state = simulation.context.getState(getEnergy=True)
+    energy = state.getPotentialEnergy().value_in_unit(energy_unit)
+    print('TotalEnergy', round(energy, 6), energy_unit.get_symbol())
+
+    # Detailed energy
+    energies = {}
+    for force_name, force in s.forces.items():
+        group = force.getForceGroup()
+        state = simulation.context.getState(getEnergy=True, groups=2 ** group)
+        energies[force_name] = state.getPotentialEnergy().value_in_unit(energy_unit)
+
+    for force_name in s.forces.keys():
+        print(force_name, round(energies[force_name], 6), energy_unit.get_symbol())
 
 
 def test_DNA_from_xyz():
