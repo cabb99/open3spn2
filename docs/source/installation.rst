@@ -23,7 +23,7 @@ The source code is available at https://github.com/cabb99/open3spn2/
 
 
 From conda
---------
+----------
 
 .. code-block:: bash
 
