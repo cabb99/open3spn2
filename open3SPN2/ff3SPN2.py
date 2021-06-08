@@ -573,7 +573,7 @@ class DNA(object):
         return self
 
     @classmethod
-    def fromXYZ(cls, xyz_file, dnatype='B_curved', template_from_X3DNA=False, output_pdb='clean.pdb', temp_name='temp'):
+    def fromXYZ(cls, xyz_file, dnatype='B_curved', template_from_X3DNA=True, output_pdb='clean.pdb', temp_name='temp'):
         """ Initializes DNA object from xyz file (as seen on the examples) """
         # Parse the file
         self = cls()
@@ -639,7 +639,7 @@ class System(simtk.openmm.System):
             self.dna.periodic = True
         elif self.dna.periodic == True:
             self.dna.periodic = False
-            print('Periodic boundary conditions not defined, system would be non periodic')
+            print('Periodic boundary conditions not defined, system will be non periodic')
         self.forces = {}
 
     def __getattr__(self, attr):
