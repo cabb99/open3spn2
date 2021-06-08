@@ -80,8 +80,8 @@ def parsePDB(pdb_file):
                     x=float(line[30:38]),
                     y=float(line[38:46]),
                     z=float(line[46:54]),
-                    occupancy=1.0 if line[54:60].strip()=='' else float(line[54:60]), # Change by Shikai on Nov/5/2020, programs like Plumed only recognizes 1.0
-                    tempFactor=1.0 if line[60:66].strip()=='' else float(line[60:66]),
+                    occupancy=1.0 if line[54:60].strip()=='' else float(line[54:60]), # Assume occupancy 1 if empty
+                    tempFactor=1.0 if line[60:66].strip()=='' else float(line[60:66]),# Assume beta 1 if empty
                     element=str(line[76:78]),
                     charge=str(line[78:80]))
 
