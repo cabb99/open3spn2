@@ -258,7 +258,7 @@ class DNA(object):
         original.index = self.atoms.index
         return original
 
-    def computeTopology(self, template_from_X3DNA=False, temp_name='temp'):
+    def computeTopology(self, template_from_X3DNA=True, temp_name='temp'):
         """ Creates tables of bonds, angles and dihedrals with their respective parameters (bonded interactions).
         3SPN2.C requires a template structure to calculate the equilibrium bonds, angles and dihedrals.
         If template_from_structure is True, it will try to compute the equilibrium geometry using X3DNA.
@@ -453,7 +453,7 @@ class DNA(object):
         return pdb_file
 
     @classmethod
-    def fromCoarsePDB(cls, pdb_file, dna_type='B_curved', temp_name='temp'):
+    def fromCoarsePDB(cls, pdb_file, dna_type='B_curved', template_from_X3DNA=True, temp_name='temp'):
         """Initializes a DNA object from a pdb file containing the Coarse Grained atoms"""
         self = cls()
 
@@ -492,12 +492,12 @@ class DNA(object):
         # Initialize the system from the pdb
         self.DNAtype = dna_type
         self.parseConfigurationFile()
-        self.computeTopology(temp_name=temp_name)
+        self.computeTopology(temp_name=temp_name, template_from_X3DNA=template_from_X3DNA)
         self.pdb_file = pdb_file
         return self
 
     @classmethod
-    def fromPDB(cls, pdb_file, dna_type='B_curved', output_pdb='clean.pdb', temp_name='temp'):
+    def fromPDB(cls, pdb_file, dna_type='B_curved', template_from_X3DNA=True, output_pdb='clean.pdb', temp_name='temp'):
         """Creates a DNA object from a complete(atomistic) pdb file"""
         self = cls()
         pdb = fixPDB(pdb_file)
@@ -506,7 +506,7 @@ class DNA(object):
         self.atoms = self.CoarseGrain(pdb_table)
         self.DNAtype = dna_type
         self.parseConfigurationFile()
-        self.computeTopology(temp_name=temp_name)
+        self.computeTopology(temp_name=temp_name, template_from_X3DNA=template_from_X3DNA)
         self.writePDB(output_pdb)
         #self.atomistic_model=temp
         return self
@@ -593,16 +593,17 @@ class DNA(object):
         """ Initializes a DNA object from a DNA sequence """
         self = cls()
         self.parseConfigurationFile()
-        sequence=pandas.Series([a for a in sequence], index=[('A', i) for i in range(len(sequence))])
+        sequence = pandas.Series([a for a in sequence], index=[('A', i) for i in range(len(sequence))])
         # Make a possible structure
         self.computeGeometry(sequence, temp_name=temp_name)
+        self.computeTopology(temp_name=temp_name, template_from_X3DNA=False)
 
         # Make a clean pdb file
         self = self.fromPDB(f'{temp_name}_template.pdb', dna_type=dna_type, output_pdb=output_pdb)
         return self
 
     @classmethod
-    def fromXYZ(cls, xyz_file, dnatype='B_curved', output_pdb='clean.pdb', temp_name='temp'):
+    def fromXYZ(cls, xyz_file, dnatype='B_curved', template_from_X3DNA=False, output_pdb='clean.pdb', temp_name='temp'):
         """ Initializes DNA object from xyz file (as seen on the examples) """
         # Parse the file
         self = cls()
@@ -643,7 +644,7 @@ class DNA(object):
         self.atoms['resname'] = [res_ix[(r['chainID'], r['resSeq'])] for i, r in self.atoms.iterrows()]
         self.DNAtype = dnatype
         self.parseConfigurationFile()
-        self.computeTopology(temp_name=temp_name)
+        self.computeTopology(temp_name=temp_name, template_from_X3DNA=template_from_X3DNA)
         self.writePDB(output_pdb)
         return self
 
