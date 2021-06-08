@@ -37,25 +37,6 @@
         <Atom name="S"  type="S"/>
         <Atom name="G"  type="G base"/>
     </Residue>
-
-
-    <Residue name="DA_Initial">
-        <Atom name="S"  type="S"/>
-        <Atom name="A"  type="A base"/>
-    </Residue>
-    <Residue name="DC_Initial">
-        <Atom name="S"  type="S"/>
-        <Atom name="C"  type="C base"/>
-    </Residue>
-    <Residue name="DT_Initial">
-        <Atom name="S"  type="S"/>
-        <Atom name="T"  type="T base"/>
-    </Residue>
-    <Residue name="DG_Initial">
-            <Atom name="S"  type="S"/>
-            <Atom name="G"  type="G base"/>
-    </Residue>
-
   </Residues>
   <Patches>
       <Patch name="Initial">
