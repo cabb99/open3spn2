@@ -716,8 +716,7 @@ class System(simtk.openmm.System):
             self.initializeMD()
         self.setPositions(coords)
         state = self.simulation.context.getState(getEnergy=True)
-        energy = state.getPotentialEnergy().value_in_unit(energy_unit)
-        return energy
+        return state.getPotentialEnergy().value_in_unit(energy_unit)
 
     def recomputeEnergy(self, trajectory, platform_name='Reference'):
         """Returns the potential energy of each snapshot in a xyz trajectory"""
@@ -1526,8 +1525,7 @@ class AMHgoProteinDNA(ProteinDNAForce):
 
         contact_list = np.loadtxt("contact_protein_DNA.dat")
         for i in range(len(contact_list)):
-            if self.aaweight: gamma_ij = contact_list[i][3]
-            else:   gamma_ij = 1.0
+            gamma_ij = contact_list[i][3] if self.aaweight else 1.0
             if (self.chain_protein, int(contact_list[i][0]), 'CB') in atoms.index:
                  CB_protein = atoms[(atoms['chainID'] == self.chain_protein) & (atoms['resSeq'] == int(contact_list[i][0])) & (atoms['name'] == 'CB') & atoms['resname'].isin(_proteinResidues)].copy()
             else:
@@ -1610,10 +1608,7 @@ class StringProteinDNA(ProteinDNAForce):
         if self.protein_seg: self.force.addGroup([CA_index[x] for x in self.group])
         else:   self.force.addGroup(CA_index)
         self.force.addGroup([int(atom.index) for atom in S_atoms.itertuples()])
-        bondGroups=[]
-        bondGroups.append(0)
-        bondGroups.append(1)
-
+        bondGroups = [0, 1]
         print(self.force.getGroupParameters(0))
         print(self.force.getGroupParameters(1))
 
@@ -1644,10 +1639,7 @@ class String_length_ProteinDNA(ProteinDNAForce):
         if self.protein_seg: self.force.addGroup([CA_index[x] for x in self.group])
         else:   self.force.addGroup(CA_index)
         self.force.addGroup([int(atom.index) for atom in S_atoms.itertuples()])
-        bondGroups=[]
-        bondGroups.append(0)
-        bondGroups.append(1)
-
+        bondGroups = [0, 1]
         print(self.force.getGroupParameters(0))
         print(self.force.getGroupParameters(1))
 
