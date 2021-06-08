@@ -8,7 +8,7 @@ It also contains Protein-DNA interaction potentials to be used with openAWSEM.
 
 
 __author__ = 'Carlos Bueno'
-__version__ = '0.3.1'
+__version__ = '0.2'
 
 import simtk.openmm.app
 import simtk.openmm
@@ -321,7 +321,7 @@ class DNA(object):
             # Make default distances the same as the initial distance
             x1 = self.template_atoms.loc[self.bonds['aai']][['x', 'y', 'z']]
             x2 = self.template_atoms.loc[self.bonds['aaj']][['x', 'y', 'z']]
-            self.bonds['r0'] = np.diag(sdist.cdist(x1, x2))
+            self.bonds['r0'] = np.diag(sdist.cdist(x1, x2))/10
 
         # Make a table with angles
         data = []
@@ -843,10 +843,10 @@ class Bond(Force, simtk.openmm.CustomBondForce):
     def defineInteraction(self):
         for i, b in self.dna.bonds.iterrows():
             # Units converted from
-            parameters = [b['r0'] * _df,
-                          b['Kb2'] / _df ** 2 * _ef,
-                          b['Kb3'] / _df ** 3 * _ef,
-                          b['Kb4'] / _df ** 4 * _ef]
+            parameters = [b['r0'],
+                          b['Kb2'],
+                          b['Kb3'],
+                          b['Kb4']]
             self.force.addBond(int(b['aai']), int(b['aaj']), parameters)
 
 
@@ -1688,9 +1688,7 @@ class TestEnergies:
         self.system = system
         self.system.clearForces()
         self.system.setDefaultPeriodicBoxVectors(*np.diag([2 * periodic_size / 10] * 3))
-
         log = parse_log(log_file)
-
         self.system.clearForces()
         f = forces[force]
         tempforce = f(self.dna)
