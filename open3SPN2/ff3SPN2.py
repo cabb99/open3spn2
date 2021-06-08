@@ -457,38 +457,8 @@ class DNA(object):
         """Initializes a DNA object from a pdb file containing the Coarse Grained atoms"""
         self = cls()
 
-        def pdb_line(line):
-            return dict(recname=str(line[0:6]).strip(),
-                        serial=int(line[6:11]),
-                        name=str(line[12:16]).strip(),
-                        altLoc=str(line[16:17]),
-                        resname=str(line[17:20]).strip(),
-                        chainID=str(line[21:22]),
-                        resSeq=int(line[22:26]),
-                        iCode=str(line[26:27]),
-                        x=float(line[30:38]),
-                        y=float(line[38:46]),
-                        z=float(line[46:54]),
-                        occupancy=1.0 if line[54:60].strip() == '' else float(line[54:60]),
-                        tempFactor=1.0 if line[60:66].strip() == '' else float(line[60:66]),
-                        element=str(line[76:78]).strip(),
-                        charge=str(line[78:80]).strip())
-
-        with open(pdb_file, 'r') as pdb:
-            lines = []
-            for line in pdb:
-                if len(line) > 6 and line[:6] in ['ATOM  ', 'HETATM']:
-                    lines += [pdb_line(line)]
-        pdb_atoms = pandas.DataFrame(lines)
-        self.atoms = pdb_atoms[['recname', 'serial', 'name', 'altLoc',
-                                'resname', 'chainID', 'resSeq', 'iCode',
-                                'x', 'y', 'z', 'occupancy', 'tempFactor',
-                                'element', 'charge']]
-        # print(self.atoms.columns)
-        # self.atoms.loc[:, 'chain'] = self.atoms['chainID']
-        # self.atoms.loc[:, 'residue'] = self.atoms['resSeq']
+        self.atoms = parsePDB(pdb_file)
         self.atoms.loc[:, 'type'] = self.atoms['name']
-        # print(self.atoms.columns)
         # Initialize the system from the pdb
         self.DNAtype = dna_type
         self.parseConfigurationFile()
