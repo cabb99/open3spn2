@@ -847,15 +847,16 @@ class Stacking(Force, simtk.openmm.CustomCompoundBondForce):
         super().__init__(dna, OpenCLPatch=OpenCLPatch)
 
     def reset(self):
-        stackingForce = simtk.openmm.CustomCompoundBondForce(3, """rep+f2*attr;
-                                                                rep=epsilon*(1-exp(-alpha*(dr)))^2*step(-dr);
-                                                                attr=epsilon*(1-exp(-alpha*(dr)))^2*step(dr)-epsilon;
-                                                                dr=distance(p2,p3)-sigma;
-                                                                f2=max(f*pair2,pair1);
-                                                                pair1=step(dt+pi/2)*step(pi/2-dt);
-                                                                pair2=step(dt+pi)*step(pi-dt);
-                                                                f=1-cos(dt)^2;
-                                                                dt=rng*(angle(p1,p2,p3)-t0);""")
+        stackingForce = simtk.openmm.CustomCompoundBondForce(3, """energy;
+                        energy=rep+f2*attr;
+                        rep=epsilon*(1-exp(-alpha*(dr)))^2*step(-dr);
+                        attr=epsilon*(1-exp(-alpha*(dr)))^2*step(dr)-epsilon;
+                        dr=distance(p2,p3)-sigma;
+                        f2=max(f*pair2,pair1);
+                        pair1=step(dt+pi/2)*step(pi/2-dt);
+                        pair2=step(dt+pi)*step(pi-dt);
+                        f=1-cos(dt)^2;
+                        dt=rng*(angle(p1,p2,p3)-t0);""")
         stackingForce.setUsesPeriodicBoundaryConditions(self.periodic)
         stackingForce.addPerBondParameter('epsilon')
         stackingForce.addPerBondParameter('sigma')
@@ -882,10 +883,11 @@ class Dihedral(Force, simtk.openmm.CustomTorsionForce):
         super().__init__(dna, OpenCLPatch=OpenCLPatch)
 
     def reset(self):
-        dihedralForce = simtk.openmm.CustomTorsionForce("""K_periodic*(1-cs)-K_gaussian*exp(-dt_periodic^2/2/sigma^2);
-                                                      cs=cos(dt);
-                                                      dt_periodic=dt-floor((dt+pi)/(2*pi))*(2*pi);
-                                                      dt=theta-t0""")
+        dihedralForce = simtk.openmm.CustomTorsionForce("""energy;
+                        energy = K_periodic*(1-cs)-K_gaussian*exp(-dt_periodic^2/2/sigma^2);
+                        cs = cos(dt);
+                        dt_periodic = dt-floor((dt+pi)/(2*pi))*(2*pi);
+                        dt = theta-t0""")
         # dihedralForce=simtk.openmm.CustomTorsionForce("theta/60.")
         dihedralForce.setUsesPeriodicBoundaryConditions(self.periodic)
         dihedralForce.addPerTorsionParameter('K_periodic')
@@ -913,21 +915,22 @@ class BasePair(Force, simtk.openmm.CustomHbondForce):
 
     def reset(self):
         def basePairForce():
-            pairForce = simtk.openmm.CustomHbondForce('''temp;temp=rep+1/2*(1+cos(dphi))*fdt1*fdt2*attr;
-                                                         rep  = epsilon*(1-exp(-alpha*dr))^2*(1-step(dr));
-                                                         attr = epsilon*(1-exp(-alpha*dr))^2*step(dr)-epsilon;
-                                                         fdt1 = max(f1*pair0t1,pair1t1);
-                                                         fdt2 = max(f2*pair0t2,pair1t2);
-                                                         pair1t1 = step(pi/2+dt1)*step(pi/2-dt1);
-                                                         pair1t2 = step(pi/2+dt2)*step(pi/2-dt2);
-                                                         pair0t1 = step(pi+dt1)*step(pi-dt1);
-                                                         pair0t2 = step(pi+dt2)*step(pi-dt2);
-                                                         f1 = 1-cos(dt1)^2;
-                                                         f2 = 1-cos(dt2)^2;
-                                                         dphi = dihedral(d2,d1,a1,a2)-phi0;
-                                                         dr    = distance(d1,a1)-sigma;
-                                                         dt1   = rng*(angle(d2,d1,a1)-t01);
-                                                         dt2   = rng*(angle(a2,a1,d1)-t02);''')
+            pairForce = simtk.openmm.CustomHbondForce('''energy;
+                        energy=rep+1/2*(1+cos(dphi))*fdt1*fdt2*attr;
+                        rep  = epsilon*(1-exp(-alpha*dr))^2*(1-step(dr));
+                        attr = epsilon*(1-exp(-alpha*dr))^2*step(dr)-epsilon;
+                        fdt1 = max(f1*pair0t1,pair1t1);
+                        fdt2 = max(f2*pair0t2,pair1t2);
+                        pair1t1 = step(pi/2+dt1)*step(pi/2-dt1);
+                        pair1t2 = step(pi/2+dt2)*step(pi/2-dt2);
+                        pair0t1 = step(pi+dt1)*step(pi-dt1);
+                        pair0t2 = step(pi+dt2)*step(pi-dt2);
+                        f1 = 1-cos(dt1)^2;
+                        f2 = 1-cos(dt2)^2;
+                        dphi = dihedral(d2,d1,a1,a2)-phi0;
+                        dr    = distance(d1,a1)-sigma;
+                        dt1   = rng*(angle(d2,d1,a1)-t01);
+                        dt2   = rng*(angle(a2,a1,d1)-t02);''')
             if self.periodic:
                 pairForce.setNonbondedMethod(pairForce.CutoffPeriodic)
             else:
@@ -996,10 +999,10 @@ class BasePair(Force, simtk.openmm.CustomHbondForce):
             # Here I am including the same atom twice,
             # it doesn't seem to break things
             for d1, d2 in zip(D1_list, D2_list):
-                self.forces[i].addDonor(d1, d2, d2, parameters)
+                self.forces[i].addDonor(d1, d2, -1, parameters)
                 #print(d1, d2, d2, parameters)
             for a1, a2 in zip(A1_list, A2_list):
-                self.forces[i].addAcceptor(a1, a2, a2)
+                self.forces[i].addAcceptor(a1, a2, -1)
                 #print(a1, a2, a2)
             # Exclude interactions
             D1['donor_id'] = [i for i in range(len(D1))]
@@ -1028,26 +1031,26 @@ class CrossStacking(Force):
     def reset(self):
         def crossStackingForce(parametersOnDonor=False):
             crossForce = simtk.openmm.CustomHbondForce(f'''energy;
-                                                        energy   = fdt3*fdtCS*attr/2;
-                                                        attr     = epsilon*(1-exp(-alpha*dr))^2*step(dr)-epsilon;
-                                                        fdt3     = max(f1*pair0t3,pair1t3);
-                                                        fdtCS    = max(f2*pair0tCS,pair1tCS);
-                                                        pair0t3  = step(pi+dt3)*step(pi-dt3);
-                                                        pair0tCS = step(pi+dtCS)*step(pi-dtCS);
-                                                        pair1t3  = step(pi/2+dt3)*step(pi/2-dt3);
-                                                        pair1tCS = step(pi/2+dtCS)*step(pi/2-dtCS);
-                                                        f1       = 1-cos(dt3)^2;
-                                                        f2       = 1-cos(dtCS)^2;
-                                                        dr       = distance(d1,a3)-sigma;
-                                                        dt3      = rng_BP*(t3-t03);
-                                                        dtCS     = rng_CS*(tCS-t0CS);
-                                                        tCS      = angle(d2,d1,a3);
-                                                        t3       = acos(cost3lim);
-                                                        cost3lim = min(max(cost3,-0.99),0.99);
-                                                        cost3    = sin(t1)*sin(t2)*cos(phi)-cos(t1)*cos(t2);
-                                                        t1       = angle(d2,d1,a1);
-                                                        t2       = angle(d1,a1,a2);
-                                                        phi      = dihedral(d2,d1,a1,a2);''')
+                         energy   = fdt3*fdtCS*attr/2;
+                         attr     = epsilon*(1-exp(-alpha*dr))^2*step(dr)-epsilon;
+                         fdt3     = max(f1*pair0t3,pair1t3);
+                         fdtCS    = max(f2*pair0tCS,pair1tCS);
+                         pair0t3  = step(pi+dt3)*step(pi-dt3);
+                         pair0tCS = step(pi+dtCS)*step(pi-dtCS);
+                         pair1t3  = step(pi/2+dt3)*step(pi/2-dt3);
+                         pair1tCS = step(pi/2+dtCS)*step(pi/2-dtCS);
+                         f1       = 1-cos(dt3)^2;
+                         f2       = 1-cos(dtCS)^2;
+                         dr       = distance(d1,a3)-sigma;
+                         dt3      = rng_BP*(t3-t03);
+                         dtCS     = rng_CS*(tCS-t0CS);
+                         tCS      = angle(d2,d1,a3);
+                         t3       = acos(cost3lim);
+                         cost3lim = min(max(cost3,-0.99),0.99);
+                         cost3    = sin(t1)*sin(t2)*cos(phi)-cos(t1)*cos(t2);
+                         t1       = angle(d2,d1,a1);
+                         t2       = angle(d1,a1,a2);
+                         phi      = dihedral(d2,d1,a1,a2);''')
             if self.periodic:
                 crossForce.setNonbondedMethod(crossForce.CutoffPeriodic)
             else:
@@ -1219,9 +1222,9 @@ class Exclusion(Force, simtk.openmm.CustomNonbondedForce):
 
     def reset(self):
         exclusionForce = simtk.openmm.CustomNonbondedForce("""energy;
-                                                            energy=(epsilon*((sigma/r)^12-2*(sigma/r)^6)+epsilon)*step(sigma-r);
-                                                            sigma=0.5*(sigma1+sigma2); 
-                                                            epsilon=sqrt(epsilon1*epsilon2)""")
+                         energy=(epsilon*((sigma/r)^12-2*(sigma/r)^6)+epsilon)*step(sigma-r);
+                         sigma=0.5*(sigma1+sigma2);
+                         epsilon=sqrt(epsilon1*epsilon2)""")
         exclusionForce.addPerParticleParameter('epsilon')
         exclusionForce.addPerParticleParameter('sigma')
         exclusionForce.setCutoffDistance(1.8)
@@ -1337,11 +1340,11 @@ class ExclusionProteinDNA(ProteinDNAForce):
     def reset(self):
         k = self.k
         exclusionForce = simtk.openmm.CustomNonbondedForce(f"""{k}*energy;
-                                                            energy=(4*epsilon*((sigma/r)^12-(sigma/r)^6)-offset)*step(cutoff-r);
-                                                            offset=4*epsilon*((sigma/cutoff)^12-(sigma/cutoff)^6);
-                                                            sigma=0.5*(sigma1+sigma2); 
-                                                            epsilon=sqrt(epsilon1*epsilon2);
-                                                            cutoff=sqrt(cutoff1*cutoff2)""")
+                         energy=(4*epsilon*((sigma/r)^12-(sigma/r)^6)-offset)*step(cutoff-r);
+                         offset=4*epsilon*((sigma/cutoff)^12-(sigma/cutoff)^6);
+                         sigma=0.5*(sigma1+sigma2); 
+                         epsilon=sqrt(epsilon1*epsilon2);
+                         cutoff=sqrt(cutoff1*cutoff2)""")
         exclusionForce.addPerParticleParameter('epsilon')
         exclusionForce.addPerParticleParameter('sigma')
         exclusionForce.addPerParticleParameter('cutoff')
@@ -1422,7 +1425,7 @@ class ElectrostaticsProteinDNA(ProteinDNAForce):
         #print(ldby, denominator)
         k = self.k
         electrostaticForce = simtk.openmm.CustomNonbondedForce(f"""k_electro_protein_DNA*energy;
-                                                                energy=q1*q2*exp(-r/inter_dh_length)/inter_denominator/r;""")
+                             energy=q1*q2*exp(-r/inter_dh_length)/inter_denominator/r;""")
         electrostaticForce.addPerParticleParameter('q')
         electrostaticForce.addGlobalParameter('k_electro_protein_DNA', k)
         electrostaticForce.addGlobalParameter('inter_dh_length', ldby)
@@ -1505,7 +1508,7 @@ protein_dna_forces=dict(ExclusionProteinDNA=ExclusionProteinDNA,
 # Unit testing
 def test_DNA_from_pdb():
     """ Test correct DNA initialization from PDB"""
-    mol = DNA.fromPDB("Tests/1svc/1svc.pdb")
+    mol = DNA.fromPDB("Tests/1svc/1svc.pdb", template_from_X3DNA=False)
 
 
 def test_DNA_from_gro():
@@ -1520,7 +1523,7 @@ def test_DNA_from_seq():
 
 def test_DNA_from_xyz():
     """Tests the correct parsing from an xyz file"""
-    mol = DNA.fromXYZ('Tests/adna/in00_conf.xyz')
+    mol = DNA.fromXYZ('Tests/adna/in00_conf.xyz', template_from_X3DNA=False)
     assert mol.atoms.at[8, 'name'] == 'P'
     assert round(mol.atoms.at[188, 'y'], 6) == -8.779343
 
@@ -1635,7 +1638,7 @@ class TestEnergies:
         for i, tests in test_sets.groupby(['Folder', 'DNA type']):
             folder = i[0]
             dna_type = i[1]
-            self.dna = DNA.fromXYZ(f'{folder}/in00_conf.xyz', dna_type)
+            self.dna = DNA.fromXYZ(f'{folder}/in00_conf.xyz', dna_type, template_from_X3DNA=False)
             self.system = System(self.dna)
             for j, test in tests.iterrows():
                 print(j)
@@ -1667,11 +1670,11 @@ class TestEnergies:
         simulation = simtk.openmm.app.Simulation(self.system.top, self.system, integrator, platform)
         simulation.context.setPositions(self.system.coord.getPositions())
         energy_unit = simtk.openmm.unit.kilojoule_per_mole
+        nan_force_particles = 0
         for i in range(10):
             state = simulation.context.getState(getForces=True)
             ff = state.getForces()
             sf = (np.array(ff) ** 2).sum(axis=1) ** .5
-            nan_force_particles = 0
             for j, f in enumerate(sf):
                 if np.isnan(f.value_in_unit(unit.kilojoule_per_mole / unit.nanometer)):
                     print(f"Particle {j + 1}/{len(sf)} has force {f} at step {i}")
@@ -1684,7 +1687,7 @@ class TestEnergies:
         for i, tests in test_sets.groupby(['Folder', 'DNA type']):
             folder = i[0]
             dna_type = i[1]
-            self.dna = DNA.fromXYZ(f'{folder}/in00_conf.xyz', dna_type)
+            self.dna = DNA.fromXYZ(f'{folder}/in00_conf.xyz', dna_type, template_from_X3DNA=False)
             self.system = System(self.dna)
             for j, test in tests.iterrows():
                 print(j)
