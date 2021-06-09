@@ -198,7 +198,7 @@ class DNA(object):
             sequence = self.getSequences()
         seq = ''.join(sequence.values)
         for s in seq:
-            pair_s = pair.loc['A', ['shear', 'stretch', 'stagger', 'buckle', 'propeller', 'opening']]
+            pair_s = pair.loc[s, ['shear', 'stretch', 'stagger', 'buckle', 'propeller', 'opening']]
             if _s:
                 step_s = step.loc[_s + s, ['shift', 'slide', 'rise', 'tilt', 'roll', 'twist']]
             else:
