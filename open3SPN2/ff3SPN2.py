@@ -233,7 +233,7 @@ class DNA(object):
                 attempt += 1
                 if attempt == max_attempts:
                     print(f"subprocess.CalledProcessError failed {max_attempts} times {e.args[0]}: {e.args[1]}")
-        template_dna = self.fromPDB(f'{temp_name}_template.pdb', output_pdb=f'{temp_name}_temp.pdb')
+        template_dna = self.fromPDB(f'{temp_name}_template.pdb', output_pdb=f'{temp_name}_temp.pdb', compute_topology=False)
         template = template_dna.atoms.copy()
         try:
             self.atoms
@@ -453,7 +453,8 @@ class DNA(object):
         return pdb_file
 
     @classmethod
-    def fromCoarsePDB(cls, pdb_file, dna_type='B_curved', template_from_X3DNA=True, temp_name='temp'):
+    def fromCoarsePDB(cls, pdb_file, dna_type='B_curved', template_from_X3DNA=True, temp_name='temp',
+                      compute_topology=True):
         """Initializes a DNA object from a pdb file containing the Coarse Grained atoms"""
         self = cls()
 
@@ -461,13 +462,15 @@ class DNA(object):
         self.atoms.loc[:, 'type'] = self.atoms['name']
         # Initialize the system from the pdb
         self.DNAtype = dna_type
-        self.parseConfigurationFile()
-        self.computeTopology(temp_name=temp_name, template_from_X3DNA=template_from_X3DNA)
+        if compute_topology:
+            self.parseConfigurationFile()
+            self.computeTopology(temp_name=temp_name, template_from_X3DNA=template_from_X3DNA)
         self.pdb_file = pdb_file
         return self
 
     @classmethod
-    def fromPDB(cls, pdb_file, dna_type='B_curved', template_from_X3DNA=True, output_pdb='clean.pdb', temp_name='temp'):
+    def fromPDB(cls, pdb_file, dna_type='B_curved', template_from_X3DNA=True, output_pdb='clean.pdb', temp_name='temp',
+                compute_topology=True):
         """Creates a DNA object from a complete(atomistic) pdb file"""
         self = cls()
         pdb = fixPDB(pdb_file)
@@ -475,8 +478,9 @@ class DNA(object):
 
         self.atoms = self.CoarseGrain(pdb_table)
         self.DNAtype = dna_type
-        self.parseConfigurationFile()
-        self.computeTopology(temp_name=temp_name, template_from_X3DNA=template_from_X3DNA)
+        if compute_topology:
+            self.parseConfigurationFile()
+            self.computeTopology(temp_name=temp_name, template_from_X3DNA=template_from_X3DNA)
         self.writePDB(output_pdb)
         #self.atomistic_model=temp
         return self
@@ -559,21 +563,24 @@ class DNA(object):
 #        pass
 
     @classmethod
-    def fromSequence(cls, sequence, dna_type='B_curved', output_pdb='clean.pdb', temp_name='temp'):
+    def fromSequence(cls, sequence, dna_type='B_curved', output_pdb='clean.pdb', temp_name='temp',
+                     compute_topology=True):
         """ Initializes a DNA object from a DNA sequence """
         self = cls()
         self.parseConfigurationFile()
         sequence = pandas.Series([a for a in sequence], index=[('A', i) for i in range(len(sequence))])
         # Make a possible structure
         self.computeGeometry(sequence, temp_name=temp_name)
-        self.computeTopology(temp_name=temp_name, template_from_X3DNA=False)
+        self.DNAtype=dna_type
 
         # Make a clean pdb file
-        self = self.fromPDB(f'{temp_name}_template.pdb', dna_type=dna_type, output_pdb=output_pdb)
+        self = self.fromPDB(f'{temp_name}_template.pdb', dna_type=dna_type, output_pdb=output_pdb,
+                            compute_topology=compute_topology)
         return self
 
     @classmethod
-    def fromXYZ(cls, xyz_file, dnatype='B_curved', template_from_X3DNA=True, output_pdb='clean.pdb', temp_name='temp'):
+    def fromXYZ(cls, xyz_file, dnatype='B_curved', template_from_X3DNA=True, output_pdb='clean.pdb', temp_name='temp',
+                compute_topology=True):
         """ Initializes DNA object from xyz file (as seen on the examples) """
         # Parse the file
         self = cls()
@@ -613,8 +620,9 @@ class DNA(object):
             res_ix.update({(res['chainID'], res['resSeq']): resname})
         self.atoms['resname'] = [res_ix[(r['chainID'], r['resSeq'])] for i, r in self.atoms.iterrows()]
         self.DNAtype = dnatype
-        self.parseConfigurationFile()
-        self.computeTopology(temp_name=temp_name, template_from_X3DNA=template_from_X3DNA)
+        if compute_topology:
+            self.parseConfigurationFile()
+            self.computeTopology(temp_name=temp_name, template_from_X3DNA=template_from_X3DNA)
         self.writePDB(output_pdb)
         return self
 
