@@ -876,10 +876,10 @@ class Stacking(Force, simtk.openmm.CustomCompoundBondForce):
 
     def defineInteraction(self):
         for i, a in self.dna.stackings.iterrows():
-            parameters = [a['epsilon'] * _ef,
-                          a['sigma'] * _df,
+            parameters = [a['epsilon'],
+                          a['sigma'],
                           a['t0'] * _af,
-                          a['alpha'] / _df,
+                          a['alpha'],
                           a['rng']]
             self.force.addBond([a['aai'], a['aaj'], a['aak']], parameters)
 
@@ -907,8 +907,8 @@ class Dihedral(Force, simtk.openmm.CustomTorsionForce):
 
     def defineInteraction(self):
         for i, a in self.dna.dihedrals.iterrows():
-            parameters = [a['K_dihedral'] * _ef,
-                          a['K_gaussian'] * _ef,
+            parameters = [a['K_dihedral'],
+                          a['K_gaussian'],
                           a['sigma'],
                           (180 + a['t0']) * _af]
             particles = [a['aai'], a['aaj'], a['aak'], a['aal']]
@@ -1123,15 +1123,11 @@ class CrossStacking(Force):
         donors = {i: [] for i in ['A', 'T', 'G', 'C']}
         for donator, donator2, d1, d2, d3 in zip(D1.itertuples(), D3.itertuples(), D1['index'], D2['index'],
                                                  D3['index']):
-            # if d1!=4:
-            #    continue
             d1t = donator.name
             d3t = donator2.name
             c1, c2 = self.crossStackingForces[d1t]
             a1t = _complement[d1t]
-            # print(d1, d2, d3)
             param = cross_definition.loc[[(a1t, d1t, d3t)]].squeeze()
-            # parameters=[param1['t03']*af,param1['T0CS_1']*af,param1['rng_cs1'],param1['rng_bp'],param1['eps_cs1']*ef,param1['alpha_cs1']/df,param1['Sigma_1']*df]
             parameters = [param['t03'] * _af,
                           param['T0CS_2'] * _af,
                           param['rng_cs2'],
@@ -1139,7 +1135,6 @@ class CrossStacking(Force):
                           param['eps_cs2'] * _ef,
                           param['alpha_cs2'] / _df,
                           param['Sigma_2'] * _df]
-            # print(param)
             c1.addDonor(d1, d2, d3)
             c2.addAcceptor(d1, d2, d3, parameters)
             # print("Donor", d1t, d1, d2, d3)
@@ -1148,15 +1143,11 @@ class CrossStacking(Force):
         aceptors = {i: [] for i in ['A', 'T', 'G', 'C']}
         for aceptor, aceptor2, a1, a2, a3 in zip(A1.itertuples(), A3.itertuples(), A1['index'], A2['index'],
                                                  A3['index']):
-            # if a1!=186:
-            #    continue
             a1t = aceptor.name
             a3t = aceptor2.name
             c1, c2 = self.crossStackingForces[_complement[a1t]]
             d1t = _complement[a1t]
             param = cross_definition.loc[[(d1t, a1t, a3t)]].squeeze()
-            # print(param)
-            # print(a1, a2, a3)
             parameters = [param['t03'] * _af,
                           param['T0CS_1'] * _af,
                           param['rng_cs1'],
@@ -1164,7 +1155,6 @@ class CrossStacking(Force):
                           param['eps_cs1'] * _ef,
                           param['alpha_cs1'] / _df,
                           param['Sigma_1'] * _df]
-            # parameters=[param1['t03']*af,param1['T0CS_2']*af,param1['rng_cs2'],param1['rng_bp'],param1['eps_cs2']*ef,param1['alpha_cs2']/df,param1['Sigma_2']*df]
             c1.addAcceptor(a1, a2, a3, parameters)
             c2.addDonor(a1, a2, a3)
             # print("Aceptor", a1t, a1, a2, a3)
@@ -1541,7 +1531,7 @@ class AMHgoProteinDNA(ProteinDNAForce):
             base_DNA = atoms[(atoms['chainID'] == self.chain_DNA) & (atoms['resSeq'] == int(contact_list[i][1])) & (atoms['name'].isin(['A', 'T', 'G', 'C'])) & atoms['resname'].isin(_dnaResidues)].copy()
             r_ijN = contact_list[i][2]/10.0*unit.nanometers
             self.force.addBond(int(CB_protein['index'].values[0]), int(base_DNA['index'].values[0]), [gamma_ij, r_ijN])
-            print(int(CB_protein['index'].values[0]), int(base_DNA['index'].values[0]), [gamma_ij, r_ijN])
+            #print(int(CB_protein['index'].values[0]), int(base_DNA['index'].values[0]), [gamma_ij, r_ijN])
 
 
 # class AMHgoProteinDNA(ProteinDNAForce):
