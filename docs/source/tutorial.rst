@@ -383,7 +383,7 @@ You can find this example on the `examples/Protein_DNA <https://github.com/cabb9
 
 .. parsed-literal::
 
-    -2319.28759765625
+    -899.144763339983
 
 .. code:: ipython3
 
@@ -408,24 +408,24 @@ You can find this example on the `examples/Protein_DNA <https://github.com/cabb9
 
 .. parsed-literal::
 
-    TotalEnergy -2319.287598 kJ/mol
-    Bond 0.0 kJ/mol
-    Angle 0.0 kJ/mol
-    Stacking 203.56601 kJ/mol
-    Dihedral -503.999969 kJ/mol
+    TotalEnergy -899.147583 kJ/mol
+    Bond 327.558105 kJ/mol
+    Angle 973.859009 kJ/mol
+    Stacking 203.565979 kJ/mol
+    Dihedral -385.277161 kJ/mol
     BasePair -284.232208 kJ/mol
-    CrossStacking -47.58614 kJ/mol
+    CrossStacking -47.586143 kJ/mol
     Exclusion 23.991552 kJ/mol
-    Electrostatics 23.268291 kJ/mol
-    ExclusionProteinDNA 296.033508 kJ/mol
-    ElectrostaticsProteinDNA -10.459808 kJ/mol
+    Electrostatics 23.268274 kJ/mol
+    ExclusionProteinDNA 296.033478 kJ/mol
+    ElectrostaticsProteinDNA -10.459805 kJ/mol
     Connectivity 1899.296875 kJ/mol
     Chain 1899.296875 kJ/mol
     Chi 1899.296875 kJ/mol
     Excl 1899.296875 kJ/mol
     rama -1363.522705 kJ/mol
     rama_pro -1363.522705 kJ/mol
-    contact -1041.547729 kJ/mol
+    contact -1041.547607 kJ/mol
     frag -1213.29834 kJ/mol
     beta1 -300.796692 kJ/mol
     beta2 -300.796692 kJ/mol
@@ -454,17 +454,17 @@ You can find this example on the `examples/Protein_DNA <https://github.com/cabb9
 .. parsed-literal::
 
     #"Step","Time (ps)","Potential Energy (kJ/mole)","Temperature (K)"
-    10000,19.999999999999794,-3281.6357421875,309.20819902531366
-    20000,40.00000000000292,-3242.73095703125,328.2315572490093
-    30000,60.00000000002736,-3190.328125,314.08870240466047
-    40000,79.99999999999496,-3219.3935546875,317.1777105109792
-    50000,99.99999999994834,-3332.782470703125,295.5841262125852
-    60000,119.99999999990173,-3328.615478515625,324.74746279891883
-    70000,139.99999999994037,-3370.357177734375,318.9747489227718
-    80000,160.00000000003587,-3277.47314453125,319.51673763174114
-    90000,180.00000000013137,-3318.990478515625,296.7758094246624
-    100000,200.00000000022686,-3113.430419921875,326.14309919252656
-    
+    1000,2.0000000000000013,-3507.7216796875,291.6758662031427
+    2000,3.999999999999781,-3233.395751953125,299.73657773689456
+    3000,5.999999999999561,-3472.61083984375,314.04882500167656
+    4000,7.999999999999341,-3199.33251953125,309.8776608226663
+    5000,10.000000000000009,-3275.126220703125,321.27214200690065
+    6000,12.000000000000677,-3167.643798828125,295.1803751740272
+    7000,14.000000000001345,-3187.2998046875,310.9197062404284
+    8000,16.00000000000201,-3296.966064453125,305.38198987465074
+    9000,18.000000000000902,-3182.54443359375,316.07187422798313
+    10000,19.999999999999794,-3229.941650390625,309.6002450725328
+        
 .. code:: ipython3
 
     #Get the detailed energy after the simulation
@@ -480,30 +480,29 @@ You can find this example on the `examples/Protein_DNA <https://github.com/cabb9
 
 .. parsed-literal::
 
-    Bond 72.512115 kJ/mol
-    Angle 128.255737 kJ/mol
-    Stacking -418.662048 kJ/mol
-    Dihedral -431.951233 kJ/mol
-    BasePair -261.759064 kJ/mol
-    CrossStacking -48.845673 kJ/mol
-    Exclusion 2.579847 kJ/mol
-    Electrostatics 24.080463 kJ/mol
-    ExclusionProteinDNA -10.953548 kJ/mol
-    ElectrostaticsProteinDNA -15.152592 kJ/mol
-    Connectivity 1702.994873 kJ/mol
-    Chain 1702.995117 kJ/mol
-    Chi 1702.994995 kJ/mol
-    Excl 1702.994995 kJ/mol
-    rama -1369.644043 kJ/mol
-    rama_pro -1369.644043 kJ/mol
-    contact -1569.174805 kJ/mol
-    frag -764.686768 kJ/mol
-    beta1 -113.435699 kJ/mol
-    beta2 -113.435699 kJ/mol
-    beta3 -113.435699 kJ/mol
-    pap1 -0.0 kJ/mol
-    pap2 -0.0 kJ/mol
-
+    Bond 102.787193 kJ/mol
+    Angle 169.343231 kJ/mol
+    Stacking -411.438232 kJ/mol
+    Dihedral -452.744202 kJ/mol
+    BasePair -242.723328 kJ/mol
+    CrossStacking -48.275833 kJ/mol
+    Exclusion 1.823019 kJ/mol
+    Electrostatics 23.37781 kJ/mol
+    ExclusionProteinDNA -6.992864 kJ/mol
+    ElectrostaticsProteinDNA -10.225787 kJ/mol
+    Connectivity 1487.126465 kJ/mol
+    Chain 1487.126587 kJ/mol
+    Chi 1487.126465 kJ/mol
+    Excl 1487.126587 kJ/mol
+    rama -1456.633789 kJ/mol
+    rama_pro -1456.633789 kJ/mol
+    contact -1326.107178 kJ/mol
+    frag -922.991699 kJ/mol
+    beta1 -136.266449 kJ/mol
+    beta2 -136.266449 kJ/mol
+    beta3 -136.266449 kJ/mol
+    pap1 0.0 kJ/mol
+    pap2 0.0 kJ/mol
 
 .. _openmm: http://docs.openmm.org/latest/api-python/index.html
 .. _platforms: http://docs.openmm.org/latest/api-python/generated/simtk.openmm.app.simulation.Simulation.html#simtk.openmm.app.simulation.Simulation.platform
