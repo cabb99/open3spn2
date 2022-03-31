@@ -63,8 +63,8 @@ To set up the simulation you will need the openmm package as detailed in :doc:`i
 
 .. testcode::
 
-    import simtk.openmm
-    import simtk.openmm.app
+    import openmm
+    import openmm.app
     import simtk.unit
     import sys
     import numpy as np
@@ -76,7 +76,7 @@ To set up the simulation you will need the openmm package as detailed in :doc:`i
     #Set initial positions
     simulation.context.setPositions(s.coord.getPositions())
     
-    energy_unit=simtk.openmm.unit.kilojoule_per_mole
+    energy_unit=openmm.unit.kilojoule_per_mole
     #Total energy
     state = simulation.context.getState(getEnergy=True)
     energy = state.getPotentialEnergy().value_in_unit(energy_unit)
@@ -109,8 +109,8 @@ Please make sure that the energies obtained coincide with the energies shown her
 .. testcode::
     
     #Add simulation reporters
-    dcd_reporter=simtk.openmm.app.DCDReporter(f'output.dcd', 1000)
-    energy_reporter=simtk.openmm.app.StateDataReporter(sys.stdout, 1000, step=True,time=True,
+    dcd_reporter=openmm.app.DCDReporter(f'output.dcd', 1000)
+    energy_reporter=openmm.app.StateDataReporter(sys.stdout, 1000, step=True,time=True,
                                                        potentialEnergy=True, temperature=True)
     simulation.reporters.append(dcd_reporter)
     simulation.reporters.append(energy_reporter)
@@ -207,11 +207,11 @@ Then generate the system.
 .. code:: ipython3
 
     #Create the merged system
-    import simtk.openmm
-    pdb=simtk.openmm.app.PDBFile('clean.pdb')
+    import openmm
+    pdb=openmm.app.PDBFile('clean.pdb')
     top=pdb.topology
     coord=pdb.positions
-    forcefield=simtk.openmm.app.ForceField(ffAWSEM.xml,open3SPN2.xml)
+    forcefield=openmm.app.ForceField(ffAWSEM.xml,open3SPN2.xml)
     s=forcefield.createSystem(top)
 
 Then add the forces
@@ -235,7 +235,7 @@ Then add the forces
     keepCMMotionRemover=True
     j=0
     for i, f in enumerate(s.getForces()):
-        if keepCMMotionRemover and i == 0 and f.__class__ == simtk.openmm.CMMotionRemover:
+        if keepCMMotionRemover and i == 0 and f.__class__ == openmm.CMMotionRemover:
             # print('Kept ', f.__class__)
             j += 1
             continue
@@ -345,16 +345,16 @@ Then set-up the simulation
 .. code:: ipython3
 
     import numpy as np
-    temperature=300 * simtk.openmm.unit.kelvin
+    temperature=300 * openmm.unit.kelvin
     #platform_name='CUDA'
     
     platform_name='OpenCL'
     
-    integrator = simtk.openmm.LangevinIntegrator(temperature, 1 / simtk.openmm.unit.picosecond, 2 * simtk.openmm.unit.femtoseconds)
-    platform = simtk.openmm.Platform.getPlatformByName(platform_name)
-    simulation = simtk.openmm.app.Simulation(top,s, integrator, platform)
+    integrator = openmm.LangevinIntegrator(temperature, 1 / openmm.unit.picosecond, 2 * openmm.unit.femtoseconds)
+    platform = openmm.Platform.getPlatformByName(platform_name)
+    simulation = openmm.app.Simulation(top,s, integrator, platform)
     simulation.context.setPositions(coord)
-    energy_unit=simtk.openmm.unit.kilojoule_per_mole
+    energy_unit=openmm.unit.kilojoule_per_mole
     state = simulation.context.getState(getEnergy=True)
     energy = state.getPotentialEnergy().value_in_unit(energy_unit)
     print(energy)
@@ -369,7 +369,7 @@ Then set-up the simulation
 
     #Obtain total energy
     
-    energy_unit=simtk.openmm.unit.kilojoule_per_mole
+    energy_unit=openmm.unit.kilojoule_per_mole
     state = simulation.context.getState(getEnergy=True)
     energy = state.getPotentialEnergy().value_in_unit(energy_unit)
     print('TotalEnergy',round(energy,6),energy_unit.get_symbol())
@@ -417,8 +417,8 @@ Then set-up the simulation
 
     #Add simulation reporters
     import sys
-    dcd_reporter=simtk.openmm.app.DCDReporter(f'output.dcd', 1000)
-    energy_reporter=simtk.openmm.app.StateDataReporter(sys.stdout, 1000, step=True,time=True,
+    dcd_reporter=openmm.app.DCDReporter(f'output.dcd', 1000)
+    energy_reporter=openmm.app.StateDataReporter(sys.stdout, 1000, step=True,time=True,
                                                        potentialEnergy=True, temperature=True)
     simulation.reporters.append(dcd_reporter)
     simulation.reporters.append(energy_reporter)

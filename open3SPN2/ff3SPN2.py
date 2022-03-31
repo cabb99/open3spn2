@@ -10,15 +10,14 @@ It also contains Protein-DNA interaction potentials to be used with openAWSEM.
 __author__ = 'Carlos Bueno'
 __version__ = '0.3.2'
 
-import simtk.openmm.app
-import simtk.openmm
+import openmm.app
+import openmm
 import simtk.unit as unit
 import configparser
 import numpy as np
 import itertools
 import scipy.spatial.distance as sdist
 import os
-import simtk.openmm.app
 import pdbfixer
 import pandas
 import subprocess
@@ -132,7 +131,7 @@ def pdb2table(pdb):
     for atom, pos in zip(pdb.topology.atoms(), pdb.positions):
         residue = atom.residue
         chain = residue.chain
-        pos = pos.value_in_unit(simtk.unit.angstrom)
+        pos = pos.value_in_unit(unit.angstrom)
         data += [dict(zip(cols, ['ATOM', int(atom.id), atom.name, '',
                                  residue.name, chain.id, int(residue.id), '',
                                  pos[0], pos[1], pos[2], 0, 0,
@@ -644,19 +643,19 @@ class DNA(object):
         return self
 
 
-class System(simtk.openmm.System):
+class System(openmm.System):
     """ Wrapper of openmm system class, adds some openmm simulation attributes"""
 
     def __init__(self, dna, forcefieldFiles=[f'{__location__}/3SPN2.xml'], periodicBox=None):
         self.dna = dna
-        self.top = simtk.openmm.app.PDBFile(dna.pdb_file).getTopology()
+        self.top = openmm.app.PDBFile(dna.pdb_file).getTopology()
         if self.top.getUnitCellDimensions() is None:
             x = dna.atoms[['x', 'y', 'z']]
             d = np.round((x.max() - x.min()) * 2 + 5, -1)
             self.top.setUnitCellDimensions(d)
 
-        self.coord = simtk.openmm.app.PDBFile(dna.pdb_file)
-        self.forcefield = simtk.openmm.app.ForceField(*forcefieldFiles)
+        self.coord = openmm.app.PDBFile(dna.pdb_file)
+        self.forcefield = openmm.app.ForceField(*forcefieldFiles)
         self._wrapped_system = self.forcefield.createSystem(self.top)
         self.periodicBox = periodicBox
         if periodicBox is not None:
@@ -677,7 +676,7 @@ class System(simtk.openmm.System):
         openMM usually adds a "CMMotionRemover" force to keep the center of mass of the system from drifting."""
         j = 0
         for i, f in enumerate(self.getForces()):
-            if keepCMMotionRemover and i == 0 and f.__class__ == simtk.openmm.CMMotionRemover:
+            if keepCMMotionRemover and i == 0 and f.__class__ == openmm.CMMotionRemover:
                 # print('Kept ', f.__class__)
                 j += 1
                 continue
@@ -712,9 +711,9 @@ class System(simtk.openmm.System):
 
     def initializeMD(self, temperature=300 * unit.kelvin, platform_name='Reference', damping=2/unit.picosecond, timestep=2*unit.femtoseconds):
         """Starts a simple simulation using the selected system"""
-        self.integrator = simtk.openmm.LangevinIntegrator(temperature, damping, timestep)
-        self.platform = simtk.openmm.Platform.getPlatformByName(platform_name)
-        self.simulation = simtk.openmm.app.Simulation(self.top, self._wrapped_system, self.integrator, self.platform)
+        self.integrator = openmm.LangevinIntegrator(temperature, damping, timestep)
+        self.platform = openmm.Platform.getPlatformByName(platform_name)
+        self.simulation = openmm.app.Simulation(self.top, self._wrapped_system, self.integrator, self.platform)
         self.simulation.context.setPositions(self.coord.positions)
         return self.simulation
 
@@ -813,7 +812,7 @@ class Force(object):
         # return a table with the energy
 
 
-class Bond(Force, simtk.openmm.CustomBondForce):
+class Bond(Force, openmm.CustomBondForce):
     def __init__(self, dna, force_group=6):
         self.force_group = force_group
         super().__init__(dna)
@@ -828,7 +827,7 @@ class Bond(Force, simtk.openmm.CustomBondForce):
         return [self.perInteractionParameters, self.GlobalParameters]
 
     def reset(self):
-        bondForce = simtk.openmm.CustomBondForce("Kb2*(r-r0)^2+Kb3*(r-r0)^3+Kb4*(r-r0)^4")
+        bondForce = openmm.CustomBondForce("Kb2*(r-r0)^2+Kb3*(r-r0)^3+Kb4*(r-r0)^4")
         bondForce.addPerBondParameter('r0')
         bondForce.addPerBondParameter('Kb2')
         bondForce.addPerBondParameter('Kb3')
@@ -847,14 +846,14 @@ class Bond(Force, simtk.openmm.CustomBondForce):
             self.force.addBond(int(b['aai']), int(b['aaj']), parameters)
 
 
-class Angle(Force, simtk.openmm.HarmonicAngleForce):
+class Angle(Force, openmm.HarmonicAngleForce):
 
     def __init__(self, dna, force_group=7):
         self.force_group = force_group
         super().__init__(dna)
 
     def reset(self):
-        angleForce = simtk.openmm.HarmonicAngleForce()
+        angleForce = openmm.HarmonicAngleForce()
         angleForce.setUsesPeriodicBoundaryConditions(self.periodic)
         angleForce.setForceGroup(self.force_group)
         self.force = angleForce
@@ -866,13 +865,13 @@ class Angle(Force, simtk.openmm.HarmonicAngleForce):
             self.force.addAngle(int(a['aai']), int(a['aaj']), int(a['aak']), *parameters)
 
 
-class Stacking(Force, simtk.openmm.CustomCompoundBondForce):
+class Stacking(Force, openmm.CustomCompoundBondForce):
     def __init__(self, dna, force_group=8):
         self.force_group = force_group
         super().__init__(dna)
 
     def reset(self):
-        stackingForce = simtk.openmm.CustomCompoundBondForce(3, """rep+f2*attr;
+        stackingForce = openmm.CustomCompoundBondForce(3, """rep+f2*attr;
                                                                 rep=epsilon*(1-exp(-alpha*(dr)))^2*step(-dr);
                                                                 attr=epsilon*(1-exp(-alpha*(dr)))^2*step(dr)-epsilon;
                                                                 dr=distance(p2,p3)-sigma;
@@ -901,20 +900,20 @@ class Stacking(Force, simtk.openmm.CustomCompoundBondForce):
             self.force.addBond([a['aai'], a['aaj'], a['aak']], parameters)
 
 
-class Dihedral(Force, simtk.openmm.CustomTorsionForce):
+class Dihedral(Force, openmm.CustomTorsionForce):
     def __init__(self, dna, force_group=9):
         self.force_group = force_group
         super().__init__(dna)
 
     def reset(self):
-        # dihedralForce = simtk.openmm.CustomTorsionForce("""K_periodic*(1-cs)-K_gaussian*exp(-atan(tan(dt))^2/2/sigma^2);
+        # dihedralForce = openmm.CustomTorsionForce("""K_periodic*(1-cs)-K_gaussian*exp(-atan(tan(dt))^2/2/sigma^2);
         #                                               cs=cos(dt);
         #                                               dt=theta-t0""")
-        dihedralForce = simtk.openmm.CustomTorsionForce("""K_periodic*(1-cs)-K_gaussian*exp(-dt_periodic^2/2/sigma^2);
+        dihedralForce = openmm.CustomTorsionForce("""K_periodic*(1-cs)-K_gaussian*exp(-dt_periodic^2/2/sigma^2);
                                                       cs=cos(dt);
                                                       dt_periodic=dt-floor((dt+pi)/(2*pi))*(2*pi);
                                                       dt=theta-t0""")
-        # dihedralForce=simtk.openmm.CustomTorsionForce("theta/60.")
+        # dihedralForce=openmm.CustomTorsionForce("theta/60.")
         dihedralForce.setUsesPeriodicBoundaryConditions(self.periodic)
         dihedralForce.addPerTorsionParameter('K_periodic')
         dihedralForce.addPerTorsionParameter('K_gaussian')
@@ -934,14 +933,14 @@ class Dihedral(Force, simtk.openmm.CustomTorsionForce):
             self.force.addTorsion(*particles, parameters)
 
 
-class BasePair(Force, simtk.openmm.CustomHbondForce):
+class BasePair(Force, openmm.CustomHbondForce):
     def __init__(self, dna, force_group=10, OpenCLPatch=True):
         self.force_group = force_group
         super().__init__(dna, OpenCLPatch)
 
     def reset(self):
         def basePairForce():
-            pairForce = simtk.openmm.CustomHbondForce('''temp;temp=rep+1/2*(1+cos(dphi))*fdt1*fdt2*attr;
+            pairForce = openmm.CustomHbondForce('''temp;temp=rep+1/2*(1+cos(dphi))*fdt1*fdt2*attr;
                                                          rep  = epsilon*(1-exp(-alpha*dr))^2*(1-step(dr));
                                                          attr = epsilon*(1-exp(-alpha*dr))^2*step(dr)-epsilon;
                                                          fdt1 = max(f1*pair0t1,pair1t1);
@@ -1060,7 +1059,7 @@ class CrossStacking(Force):
                 patch_string = '/2'
             else:
                 patch_string = ''
-            crossForce = simtk.openmm.CustomHbondForce(f'''energy{patch_string};temp=dtCS/rng_CS;
+            crossForce = openmm.CustomHbondForce(f'''energy{patch_string};temp=dtCS/rng_CS;
                                                         energy   = fdt3*fdtCS*attr;
                                                         attr     = epsilon*(1-exp(-alpha*dr))^2*step(dr)-epsilon;
                                                         fdt3     = max(f1*pair0t3,pair1t3);
@@ -1254,7 +1253,7 @@ class Exclusion(Force, simtk.openmm.CustomNonbondedForce):
         super().__init__(dna)
 
     def reset(self):
-        exclusionForce = simtk.openmm.CustomNonbondedForce("""energy;
+        exclusionForce = openmm.CustomNonbondedForce("""energy;
                                                             energy=(epsilon*((sigma/r)^12-2*(sigma/r)^6)+epsilon)*step(sigma-r);
                                                             sigma=0.5*(sigma1+sigma2); 
                                                             epsilon=sqrt(epsilon1*epsilon2)""")
@@ -1294,7 +1293,7 @@ class Exclusion(Force, simtk.openmm.CustomNonbondedForce):
         addNonBondedExclusions(self.dna, self.force)
 
 
-class Electrostatics(Force, simtk.openmm.CustomNonbondedForce):
+class Electrostatics(Force, openmm.CustomNonbondedForce):
     def __init__(self, dna, force_group=13, temperature=300*unit.kelvin, salt_concentration=100*unit.millimolar):
         self.force_group = force_group
         self.T = temperature
@@ -1309,8 +1308,8 @@ class Electrostatics(Force, simtk.openmm.CustomNonbondedForce):
         #print(e, a)
         dielectric = e * a
         # Debye length
-        kb = simtk.unit.BOLTZMANN_CONSTANT_kB  # Bolztmann constant
-        Na = simtk.unit.AVOGADRO_CONSTANT_NA  # Avogadro number
+        kb = unit.BOLTZMANN_CONSTANT_kB  # Bolztmann constant
+        Na = unit.AVOGADRO_CONSTANT_NA  # Avogadro number
         ec = 1.60217653E-19 * unit.coulomb  # proton charge
         pv = 8.8541878176E-12 * unit.farad / unit.meter  # dielectric permittivity of vacuum
 
@@ -1320,7 +1319,7 @@ class Electrostatics(Force, simtk.openmm.CustomNonbondedForce):
         denominator = denominator.in_units_of(unit.kilocalorie_per_mole**-1 * unit.nanometer**-1)
         #print(ldby, denominator)
 
-        electrostaticForce = simtk.openmm.CustomNonbondedForce("""energy;
+        electrostaticForce = openmm.CustomNonbondedForce("""energy;
                                                                 energy=q1*q2*exp(-r/dh_length)/denominator/r;""")
         electrostaticForce.addPerParticleParameter('q')
         electrostaticForce.addGlobalParameter('dh_length', ldby)
@@ -1371,13 +1370,13 @@ class ExclusionProteinDNA(ProteinDNAForce):
         super().__init__(dna, protein)
 
     def reset(self):
-        k = self.k
-        exclusionForce = simtk.openmm.CustomNonbondedForce(f"""{k}*energy;
+        exclusionForce = openmm.CustomNonbondedForce(f"""k_exclusion_protein_DNA*energy;
                                                             energy=(4*epsilon*((sigma/r)^12-(sigma/r)^6)-offset)*step(cutoff-r);
                                                             offset=4*epsilon*((sigma/cutoff)^12-(sigma/cutoff)^6);
                                                             sigma=0.5*(sigma1+sigma2); 
                                                             epsilon=sqrt(epsilon1*epsilon2);
                                                             cutoff=sqrt(cutoff1*cutoff2)""")
+        exclusionForce.addGlobalParameter('k_exclusion_protein_DNA', self.k)
         exclusionForce.addPerParticleParameter('epsilon')
         exclusionForce.addPerParticleParameter('sigma')
         exclusionForce.addPerParticleParameter('cutoff')
@@ -1448,7 +1447,7 @@ class ElectrostaticsProteinDNA(ProteinDNAForce):
         dielectric = 78 # e * a
         #print(dielectric)
         # Debye length
-        Na = simtk.unit.AVOGADRO_CONSTANT_NA  # Avogadro number
+        Na = unit.AVOGADRO_CONSTANT_NA  # Avogadro number
         ec = 1.60217653E-19 * unit.coulomb  # proton charge
         pv = 8.8541878176E-12 * unit.farad / unit.meter  # dielectric permittivity of vacuum
 
@@ -1457,7 +1456,7 @@ class ElectrostaticsProteinDNA(ProteinDNAForce):
         denominator = denominator.in_units_of(unit.kilocalorie_per_mole**-1 * unit.nanometer**-1)
         #print(ldby, denominator)
         k = self.k
-        electrostaticForce = simtk.openmm.CustomNonbondedForce(f"""k_electro_protein_DNA*energy;
+        electrostaticForce = openmm.CustomNonbondedForce(f"""k_electro_protein_DNA*energy;
                                                                 energy=q1*q2*exp(-r/inter_dh_length)/inter_denominator/r;""")
         electrostaticForce.addPerParticleParameter('q')
         electrostaticForce.addGlobalParameter('k_electro_protein_DNA', k)
@@ -1542,9 +1541,9 @@ class AMHgoProteinDNA(ProteinDNAForce):
         cutoff = self.cutoff
         k_3spn2 = self.k_3spn2
         if self.globalct:
-                amhgoForce = simtk.openmm.CustomBondForce(f"-k_amhgo_PD*gamma_ij*exp(-(r-r_ijN)^2/(2*sigma_sq))*step({cutoff}-r)")
+                amhgoForce = openmm.CustomBondForce(f"-k_amhgo_PD*gamma_ij*exp(-(r-r_ijN)^2/(2*sigma_sq))*step({cutoff}-r)")
         else:
-                amhgoForce = simtk.openmm.CustomBondForce(f"-k_amhgo_PD*gamma_ij*exp(-(r-r_ijN)^2/(2*sigma_sq))*step(r_ijN+{cutoff}-r)")
+                amhgoForce = openmm.CustomBondForce(f"-k_amhgo_PD*gamma_ij*exp(-(r-r_ijN)^2/(2*sigma_sq))*step(r_ijN+{cutoff}-r)")
         amhgoForce.addGlobalParameter("k_amhgo_PD", k_3spn2*self.k_amhgo_PD)
         amhgoForce.addGlobalParameter("sigma_sq", self.sigma_sq)
         amhgoForce.addPerBondParameter("gamma_ij")
@@ -1586,7 +1585,7 @@ class AMHgoProteinDNA(ProteinDNAForce):
 #
 #    def reset(self):
 #        cutoff = self.cutoff
-#        amhgoForce = simtk.openmm.CustomBondForce(f"-k_amhgo_PD*gamma_ij*exp(-(r-r_ijN)^2/(2*sigma_sq))*step({cutoff}-r)")
+#        amhgoForce = openmm.CustomBondForce(f"-k_amhgo_PD*gamma_ij*exp(-(r-r_ijN)^2/(2*sigma_sq))*step({cutoff}-r)")
 #        amhgoForce.addGlobalParameter("k_amhgo_PD", self.k_amhgo_PD)
 #        amhgoForce.addGlobalParameter("sigma_sq", self.sigma_sq)
 #        amhgoForce.addPerBondParameter("gamma_ij")
@@ -1627,7 +1626,7 @@ class StringProteinDNA(ProteinDNAForce):
     def reset(self):
         r0=self.r0
         k_string_PD=self.k_string_PD
-        stringForce = simtk.openmm.CustomCentroidBondForce(2, f"0.5*{k_string_PD}*(distance(g1,g2)-{r0})^2")
+        stringForce = openmm.CustomCentroidBondForce(2, f"0.5*{k_string_PD}*(distance(g1,g2)-{r0})^2")
         self.force = stringForce
         print("String_PD bias on: r0, k_string = ", r0, k_string_PD)
 
@@ -1661,7 +1660,7 @@ class String_length_ProteinDNA(ProteinDNAForce):
         super().__init__(dna, protein)
 
     def reset(self):
-        length = simtk.openmm.CustomCentroidBondForce(2, "distance(g1,g2)")
+        length = openmm.CustomCentroidBondForce(2, "distance(g1,g2)")
         length.setForceGroup(self.force_group)
         self.force = length
 
@@ -1858,20 +1857,20 @@ class TestEnergies:
             tempforce.addForce(self.system)
         except AttributeError:
             self.system.addForce(tempforce)
-        temperature = 300 * simtk.openmm.unit.kelvin
-        integrator = simtk.openmm.LangevinIntegrator(temperature, 1 / simtk.openmm.unit.picosecond,
-                                                     2 * simtk.openmm.unit.femtoseconds)
-        platform = simtk.openmm.Platform.getPlatformByName(platform_name)
-        simulation = simtk.openmm.app.Simulation(self.system.top, self.system, integrator, platform)
+        temperature = 300 * openmm.unit.kelvin
+        integrator = openmm.LangevinIntegrator(temperature, 1 / openmm.unit.picosecond,
+                                                     2 * openmm.unit.femtoseconds)
+        platform = openmm.Platform.getPlatformByName(platform_name)
+        simulation = openmm.app.Simulation(self.system.top, self.system, integrator, platform)
         simulation.context.setPositions(self.system.coord.getPositions())
-        energy_unit = simtk.openmm.unit.kilojoule_per_mole
+        energy_unit = openmm.unit.kilojoule_per_mole
         for i in range(10):
             state = simulation.context.getState(getForces=True)
             ff = state.getForces()
             sf = (np.array(ff) ** 2).sum(axis=1) ** .5
             nan_force_particles = 0
             for j, f in enumerate(sf):
-                if np.isnan(f.value_in_unit(simtk.unit.kilojoule_per_mole / simtk.unit.nanometer)):
+                if np.isnan(f.value_in_unit(unit.kilojoule_per_mole / unit.nanometer)):
                     print(f"Particle {j + 1}/{len(sf)} has force {f} at step {i}")
                     nan_force_particles += 1
             simulation.step(1)

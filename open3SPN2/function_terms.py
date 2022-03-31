@@ -1,6 +1,6 @@
 
-from simtk.openmm.app import *
-from simtk.openmm import *
+from openmm.app import *
+from openmm import *
 from simtk.unit import *
 import numpy as np
 
