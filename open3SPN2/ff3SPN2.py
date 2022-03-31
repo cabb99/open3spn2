@@ -1227,27 +1227,60 @@ class CrossStacking(Force):
             assert fg == c2.getForceGroup()
         return fg
 
-
 def addNonBondedExclusions(dna, force, OpenCLPatch=True):
     is_dna = dna.atoms['resname'].isin(_dnaResidues)
     atoms = dna.atoms.copy()
-    selection = atoms[is_dna]
-    for (i, atom_a), (j, atom_b) in itertools.combinations(selection.iterrows(), r=2):
-        if j < i:
-            i, j = j, i
-            atom_a, atom_b = atom_b, atom_a
-        # Neighboring residues
-        if atom_a.chainID == atom_b.chainID and (abs(atom_a.resSeq - atom_b.resSeq) <= 1):
-            force.addExclusion(i, j)
-            # print(i, j)
-        # Base-pair residues
-        elif OpenCLPatch and (atom_a['name'] in _complement.keys()) and (atom_b['name'] in _complement.keys()) and (
-                atom_a['name'] == _complement[atom_b['name']]):
-            force.addExclusion(i, j)
-            # print(i, j)
+    selection = atoms[is_dna].sort_index()
+    selection['index'] = selection.index
+    selection['neighbor'] = selection['chainID'].astype(str) + '_' + (selection['resSeq'] - 1).astype(str)
+    selection.index = selection['chainID'].astype(str) + '_' + (selection['resSeq']).astype(str)
 
+    exclusions = []
+    for i, neighbor_res, self_res in zip(selection['index'], selection['neighbor'], selection.index):
+        # Add exclusions for the same residue
+        for j in selection.loc[self_res, 'index']:
+            if i > j:
+                exclusions += [(j, i)]
+        # Add exclusions with the neighboring residue on the same chain
+        try:
+            for j in selection.loc[neighbor_res, 'index']:
+                exclusions += [(j, i)]
+        except KeyError:
+            continue
 
-class Exclusion(Force, simtk.openmm.CustomNonbondedForce):
+    exclusions_bp = []
+    if OpenCLPatch:
+        # Add basepair exclusions
+        for key in _complement:
+            selection_N = atoms[is_dna & (atoms['name'] == key)]
+            selection_C = atoms[is_dna & (atoms['name'] == _complement[key])]
+            for i, j in itertools.product(selection_N.index, selection_C.index):
+                if i > j:
+                    exclusions_bp += [(j, i)]
+
+    exclusions = list(set(exclusions+exclusions_bp))
+    for i, j in exclusions:
+        force.addExclusion(i, j)
+
+# def addNonBondedExclusions(dna, force, OpenCLPatch=True):
+#     is_dna = dna.atoms['resname'].isin(_dnaResidues)
+#     atoms = dna.atoms.copy()
+#     selection = atoms[is_dna]
+#     for (i, atom_a), (j, atom_b) in itertools.combinations(selection.iterrows(), r=2):
+#         if j < i:
+#             i, j = j, i
+#             atom_a, atom_b = atom_b, atom_a
+#         # Neighboring residues
+#         if atom_a.chainID == atom_b.chainID and (abs(atom_a.resSeq - atom_b.resSeq) <= 1):
+#             force.addExclusion(i, j)
+#             # print(i, j)
+#         # Base-pair residues
+#         elif OpenCLPatch and (atom_a['name'] in _complement.keys()) and (atom_b['name'] in _complement.keys()) and (
+#                 atom_a['name'] == _complement[atom_b['name']]):
+#             force.addExclusion(i, j)
+#             # print(i, j)
+
+class Exclusion(Force, openmm.CustomNonbondedForce):
     def __init__(self, dna, force_group = 12):
         self.force_group = force_group
         super().__init__(dna)
