@@ -33,6 +33,9 @@ Further documentation and tutorials are hosted in [readthedocs](https://open3spn
 
 If you publish any work using the open3SPN2 package, please include the following references:
 
+Open3SPN2
+Lu, W., Bueno, C., Schafer, N. P., Moller, J., Jin, S., Chen, X., ... & Wolynes, P. G. (2021). OpenAWSEM with Open3SPN2: A fast, flexible, and accessible framework for large-scale coarse-grained biomolecular simulations. PLoS computational biology, 17(2), e1008308. https://doi.org/10.1371/journal.pcbi.1008308
+
 3SPN.2
 Hinckley, D. M., Freeman, G. S., Whitmer, J. K., & De Pablo, J. J. (2013). An experimentally-informed coarse-grained 3-site-per-nucleotide model of DNA: Structure, thermodynamics, and dynamics of hybridization. Journal of Chemical Physics, 139(14). https://doi.org/10.1063/1.4822042
 

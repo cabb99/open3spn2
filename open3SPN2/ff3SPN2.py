@@ -80,8 +80,8 @@ def parsePDB(pdb_file):
                     x=float(line[30:38]),
                     y=float(line[38:46]),
                     z=float(line[46:54]),
-                    occupancy=1.0 if line[54:60].strip()=='' else float(line[54:60]), # Change by Shikai on Nov/5/2020, programs like Plumed only recognizes 1.0
-                    tempFactor=1.0 if line[60:66].strip()=='' else float(line[60:66]),
+                    occupancy=1.0 if line[54:60].strip()=='' else float(line[54:60]), # Assume occupancy 1 if empty
+                    tempFactor=1.0 if line[60:66].strip()=='' else float(line[60:66]),# Assume beta 1 if empty
                     element=str(line[76:78]),
                     charge=str(line[78:80]))
 
@@ -108,7 +108,7 @@ def fixPDB(pdb_file):
     keys = fixer.missingResidues.keys()
     for key in list(keys):
         chain_tmp = chains[key[0]]
-        if key[1] == 0 or key[1] == len(list(chain_tmp.residues())):
+        if key[1] in [0, len(list(chain_tmp.residues()))]:
             del fixer.missingResidues[key]
 
     fixer.findNonstandardResidues()
@@ -233,7 +233,7 @@ class DNA(object):
                 attempt += 1
                 if attempt == max_attempts:
                     print(f"subprocess.CalledProcessError failed {max_attempts} times {e.args[0]}: {e.args[1]}")
-        template_dna = self.fromPDB(f'{temp_name}_template.pdb', output_pdb=f'{temp_name}_temp.pdb')
+        template_dna = self.fromPDB(f'{temp_name}_template.pdb', output_pdb=f'{temp_name}_temp.pdb', compute_topology=False)
         template = template_dna.atoms.copy()
         try:
             self.atoms
@@ -258,7 +258,7 @@ class DNA(object):
         original.index = self.atoms.index
         return original
 
-    def computeTopology(self, template_from_X3DNA=False, temp_name='temp'):
+    def computeTopology(self, template_from_X3DNA=True, temp_name='temp'):
         """ Creates tables of bonds, angles and dihedrals with their respective parameters (bonded interactions).
         3SPN2.C requires a template structure to calculate the equilibrium bonds, angles and dihedrals.
         If template_from_structure is True, it will try to compute the equilibrium geometry using X3DNA.
@@ -321,7 +321,7 @@ class DNA(object):
             # Make default distances the same as the initial distance
             x1 = self.template_atoms.loc[self.bonds['aai']][['x', 'y', 'z']]
             x2 = self.template_atoms.loc[self.bonds['aaj']][['x', 'y', 'z']]
-            self.bonds['r0'] = np.diag(sdist.cdist(x1, x2))
+            self.bonds['r0'] = np.diag(sdist.cdist(x1, x2))/10
 
         # Make a table with angles
         data = []
@@ -344,10 +344,15 @@ class DNA(object):
                 k2 = (c, r + s1, aj)
                 k3 = (c, r + s2, ak)
                 k4 = (c, r + sb, 'S')
-                if k1 in index and k2 in index and k3 in index and k4 in index:
-                    if b1 == '*' or base[index[k1]] == b1:
-                        if b2 == '*' or base[index[k4]] == b2:
-                            data += [[i, index[k1], index[k2], index[k3], index[k4], sb]]
+                if (
+                    k1 in index
+                    and k2 in index
+                    and k3 in index
+                    and k4 in index
+                    and (b1 == '*' or base[index[k1]] == b1)
+                    and (b2 == '*' or base[index[k4]] == b2)
+                ):
+                    data += [[i, index[k1], index[k2], index[k3], index[k4], sb]]
         data = pandas.DataFrame(data, columns=['name', 'aai', 'aaj', 'aak', 'aax', 'sB'])
         self.angles = data.merge(angle_types, left_on='name', right_index=True)
 
@@ -448,51 +453,24 @@ class DNA(object):
         return pdb_file
 
     @classmethod
-    def fromCoarsePDB(cls, pdb_file, dna_type='B_curved', temp_name='temp'):
+    def fromCoarsePDB(cls, pdb_file, dna_type='B_curved', template_from_X3DNA=True, temp_name='temp',
+                      compute_topology=True):
         """Initializes a DNA object from a pdb file containing the Coarse Grained atoms"""
         self = cls()
 
-        def pdb_line(line):
-            return dict(recname=str(line[0:6]).strip(),
-                        serial=int(line[6:11]),
-                        name=str(line[12:16]).strip(),
-                        altLoc=str(line[16:17]),
-                        resname=str(line[17:20]).strip(),
-                        chainID=str(line[21:22]),
-                        resSeq=int(line[22:26]),
-                        iCode=str(line[26:27]),
-                        x=float(line[30:38]),
-                        y=float(line[38:46]),
-                        z=float(line[46:54]),
-                        occupancy=1.0 if line[54:60].strip() == '' else float(line[54:60]),
-                        tempFactor=1.0 if line[60:66].strip() == '' else float(line[60:66]),
-                        element=str(line[76:78]).strip(),
-                        charge=str(line[78:80]).strip())
-
-        with open(pdb_file, 'r') as pdb:
-            lines = []
-            for line in pdb:
-                if len(line) > 6 and line[:6] in ['ATOM  ', 'HETATM']:
-                    lines += [pdb_line(line)]
-        pdb_atoms = pandas.DataFrame(lines)
-        self.atoms = pdb_atoms[['recname', 'serial', 'name', 'altLoc',
-                                'resname', 'chainID', 'resSeq', 'iCode',
-                                'x', 'y', 'z', 'occupancy', 'tempFactor',
-                                'element', 'charge']]
-        # print(self.atoms.columns)
-        # self.atoms.loc[:, 'chain'] = self.atoms['chainID']
-        # self.atoms.loc[:, 'residue'] = self.atoms['resSeq']
+        self.atoms = parsePDB(pdb_file)
         self.atoms.loc[:, 'type'] = self.atoms['name']
-        # print(self.atoms.columns)
         # Initialize the system from the pdb
         self.DNAtype = dna_type
-        self.parseConfigurationFile()
-        self.computeTopology(temp_name=temp_name)
+        if compute_topology:
+            self.parseConfigurationFile()
+            self.computeTopology(temp_name=temp_name, template_from_X3DNA=template_from_X3DNA)
         self.pdb_file = pdb_file
         return self
 
     @classmethod
-    def fromPDB(cls, pdb_file, dna_type='B_curved', output_pdb='clean.pdb', temp_name='temp'):
+    def fromPDB(cls, pdb_file, dna_type='B_curved', template_from_X3DNA=True, output_pdb='clean.pdb', temp_name='temp',
+                compute_topology=True):
         """Creates a DNA object from a complete(atomistic) pdb file"""
         self = cls()
         pdb = fixPDB(pdb_file)
@@ -500,8 +478,9 @@ class DNA(object):
 
         self.atoms = self.CoarseGrain(pdb_table)
         self.DNAtype = dna_type
-        self.parseConfigurationFile()
-        self.computeTopology(temp_name=temp_name)
+        if compute_topology:
+            self.parseConfigurationFile()
+            self.computeTopology(temp_name=temp_name, template_from_X3DNA=template_from_X3DNA)
         self.writePDB(output_pdb)
         #self.atomistic_model=temp
         return self
@@ -584,20 +563,24 @@ class DNA(object):
 #        pass
 
     @classmethod
-    def fromSequence(cls, sequence, dna_type='B_curved', output_pdb='clean.pdb', temp_name='temp'):
+    def fromSequence(cls, sequence, dna_type='B_curved', output_pdb='clean.pdb', temp_name='temp',
+                     compute_topology=True):
         """ Initializes a DNA object from a DNA sequence """
         self = cls()
         self.parseConfigurationFile()
-        sequence=pandas.Series([a for a in sequence], index=[('A', i) for i in range(len(sequence))])
+        sequence = pandas.Series([a for a in sequence], index=[('A', i) for i in range(len(sequence))])
         # Make a possible structure
         self.computeGeometry(sequence, temp_name=temp_name)
+        self.DNAtype=dna_type
 
         # Make a clean pdb file
-        self = self.fromPDB(f'{temp_name}_template.pdb', dna_type=dna_type, output_pdb=output_pdb)
+        self = self.fromPDB(f'{temp_name}_template.pdb', dna_type=dna_type, output_pdb=output_pdb,
+                            compute_topology=compute_topology)
         return self
 
     @classmethod
-    def fromXYZ(cls, xyz_file, dnatype='B_curved', output_pdb='clean.pdb', temp_name='temp'):
+    def fromXYZ(cls, xyz_file, dnatype='B_curved', template_from_X3DNA=True, output_pdb='clean.pdb', temp_name='temp',
+                compute_topology=True):
         """ Initializes DNA object from xyz file (as seen on the examples) """
         # Parse the file
         self = cls()
@@ -611,14 +594,14 @@ class DNA(object):
         chains = []
         sugar = True
         for t in self.atoms['name']:
-            if t == 'S':
+            if t == 'P':
+                residue += 1
+                sugar = False
+            elif t == 'S':
                 if sugar:
                     residue += 1
                     chain += 1
                 sugar = True
-            if t == 'P':
-                residue += 1
-                sugar = False
             residues += [residue]
             chains += [chain]
         self.atoms['resSeq'] = residues
@@ -637,8 +620,9 @@ class DNA(object):
             res_ix.update({(res['chainID'], res['resSeq']): resname})
         self.atoms['resname'] = [res_ix[(r['chainID'], r['resSeq'])] for i, r in self.atoms.iterrows()]
         self.DNAtype = dnatype
-        self.parseConfigurationFile()
-        self.computeTopology(temp_name=temp_name)
+        if compute_topology:
+            self.parseConfigurationFile()
+            self.computeTopology(temp_name=temp_name, template_from_X3DNA=template_from_X3DNA)
         self.writePDB(output_pdb)
         return self
 
@@ -661,9 +645,9 @@ class System(openmm.System):
         if periodicBox is not None:
             self._wrapped_system.setDefaultPeriodicBoxVectors(*np.diag(self.periodic_box))
             self.dna.periodic = True
-        elif periodicBox is None and self.dna.periodic == True:
+        elif self.dna.periodic == True:
             self.dna.periodic = False
-            print('Periodic boundary conditions not defined, system would be non periodic')
+            print('Periodic boundary conditions not defined, system will be non periodic')
         self.forces = {}
 
     def __getattr__(self, attr):
@@ -740,8 +724,7 @@ class System(openmm.System):
             self.initializeMD()
         self.setPositions(coords)
         state = self.simulation.context.getState(getEnergy=True)
-        energy = state.getPotentialEnergy().value_in_unit(energy_unit)
-        return energy
+        return state.getPotentialEnergy().value_in_unit(energy_unit)
 
     def recomputeEnergy(self, trajectory, platform_name='Reference'):
         """Returns the potential energy of each snapshot in a xyz trajectory"""
@@ -813,9 +796,9 @@ class Force(object):
 
 
 class Bond(Force, openmm.CustomBondForce):
-    def __init__(self, dna, force_group=6):
+    def __init__(self, dna, force_group=6, OpenCLPatch=True):
         self.force_group = force_group
-        super().__init__(dna)
+        super().__init__(dna, OpenCLPatch=OpenCLPatch)
 
     def getParameterNames(self):
         self.perInteractionParameters = []
@@ -839,18 +822,18 @@ class Bond(Force, openmm.CustomBondForce):
     def defineInteraction(self):
         for i, b in self.dna.bonds.iterrows():
             # Units converted from
-            parameters = [b['r0'] * _df,
-                          b['Kb2'] / _df ** 2 * _ef,
-                          b['Kb3'] / _df ** 3 * _ef,
-                          b['Kb4'] / _df ** 4 * _ef]
+            parameters = [b['r0'],
+                          b['Kb2'],
+                          b['Kb3'],
+                          b['Kb4']]
             self.force.addBond(int(b['aai']), int(b['aaj']), parameters)
 
 
 class Angle(Force, openmm.HarmonicAngleForce):
 
-    def __init__(self, dna, force_group=7):
+    def __init__(self, dna, force_group=7, OpenCLPatch=True):
         self.force_group = force_group
-        super().__init__(dna)
+        super().__init__(dna, OpenCLPatch=OpenCLPatch)
 
     def reset(self):
         angleForce = openmm.HarmonicAngleForce()
@@ -866,20 +849,21 @@ class Angle(Force, openmm.HarmonicAngleForce):
 
 
 class Stacking(Force, openmm.CustomCompoundBondForce):
-    def __init__(self, dna, force_group=8):
+    def __init__(self, dna, force_group=8, OpenCLPatch=True):
         self.force_group = force_group
-        super().__init__(dna)
+        super().__init__(dna, OpenCLPatch=OpenCLPatch)
 
     def reset(self):
-        stackingForce = openmm.CustomCompoundBondForce(3, """rep+f2*attr;
-                                                                rep=epsilon*(1-exp(-alpha*(dr)))^2*step(-dr);
-                                                                attr=epsilon*(1-exp(-alpha*(dr)))^2*step(dr)-epsilon;
-                                                                dr=distance(p2,p3)-sigma;
-                                                                f2=max(f*pair2,pair1);
-                                                                pair1=step(dt+pi/2)*step(pi/2-dt);
-                                                                pair2=step(dt+pi)*step(pi-dt);
-                                                                f=1-cos(dt)^2;
-                                                                dt=rng*(angle(p1,p2,p3)-t0);""")
+        stackingForce = openmm.CustomCompoundBondForce(3, """energy;
+                        energy=rep+f2*attr;
+                        rep=epsilon*(1-exp(-alpha*(dr)))^2*step(-dr);
+                        attr=epsilon*(1-exp(-alpha*(dr)))^2*step(dr)-epsilon;
+                        dr=distance(p2,p3)-sigma;
+                        f2=max(f*pair2,pair1);
+                        pair1=step(dt+pi/2)*step(pi/2-dt);
+                        pair2=step(dt+pi)*step(pi-dt);
+                        f=1-cos(dt)^2;
+                        dt=rng*(angle(p1,p2,p3)-t0);""")
         stackingForce.setUsesPeriodicBoundaryConditions(self.periodic)
         stackingForce.addPerBondParameter('epsilon')
         stackingForce.addPerBondParameter('sigma')
@@ -892,28 +876,26 @@ class Stacking(Force, openmm.CustomCompoundBondForce):
 
     def defineInteraction(self):
         for i, a in self.dna.stackings.iterrows():
-            parameters = [a['epsilon'] * _ef,
-                          a['sigma'] * _df,
+            parameters = [a['epsilon'],
+                          a['sigma'],
                           a['t0'] * _af,
-                          a['alpha'] / _df,
+                          a['alpha'],
                           a['rng']]
             self.force.addBond([a['aai'], a['aaj'], a['aak']], parameters)
 
 
 class Dihedral(Force, openmm.CustomTorsionForce):
-    def __init__(self, dna, force_group=9):
+    def __init__(self, dna, force_group=9, OpenCLPatch=True):
         self.force_group = force_group
-        super().__init__(dna)
+        super().__init__(dna, OpenCLPatch=OpenCLPatch)
 
     def reset(self):
-        # dihedralForce = openmm.CustomTorsionForce("""K_periodic*(1-cs)-K_gaussian*exp(-atan(tan(dt))^2/2/sigma^2);
-        #                                               cs=cos(dt);
-        #                                               dt=theta-t0""")
-        dihedralForce = openmm.CustomTorsionForce("""K_periodic*(1-cs)-K_gaussian*exp(-dt_periodic^2/2/sigma^2);
-                                                      cs=cos(dt);
-                                                      dt_periodic=dt-floor((dt+pi)/(2*pi))*(2*pi);
-                                                      dt=theta-t0""")
-        # dihedralForce=openmm.CustomTorsionForce("theta/60.")
+        dihedralForce = openmm.CustomTorsionForce("""energy;
+                        energy = K_periodic*(1-cs)-K_gaussian*exp(-dt_periodic^2/2/sigma^2);
+                        cs = cos(dt);
+                        dt_periodic = dt-floor((dt+pi)/(2*pi))*(2*pi);
+                        dt = theta-t0""")
+        # dihedralForce=simtk.openmm.CustomTorsionForce("theta/60.")
         dihedralForce.setUsesPeriodicBoundaryConditions(self.periodic)
         dihedralForce.addPerTorsionParameter('K_periodic')
         dihedralForce.addPerTorsionParameter('K_gaussian')
@@ -925,8 +907,8 @@ class Dihedral(Force, openmm.CustomTorsionForce):
 
     def defineInteraction(self):
         for i, a in self.dna.dihedrals.iterrows():
-            parameters = [a['K_dihedral'] * _ef,
-                          a['K_gaussian'] * _ef,
+            parameters = [a['K_dihedral'],
+                          a['K_gaussian'],
                           a['sigma'],
                           (180 + a['t0']) * _af]
             particles = [a['aai'], a['aaj'], a['aak'], a['aal']]
@@ -936,25 +918,26 @@ class Dihedral(Force, openmm.CustomTorsionForce):
 class BasePair(Force, openmm.CustomHbondForce):
     def __init__(self, dna, force_group=10, OpenCLPatch=True):
         self.force_group = force_group
-        super().__init__(dna, OpenCLPatch)
+        super().__init__(dna, OpenCLPatch=OpenCLPatch)
 
     def reset(self):
         def basePairForce():
-            pairForce = openmm.CustomHbondForce('''temp;temp=rep+1/2*(1+cos(dphi))*fdt1*fdt2*attr;
-                                                         rep  = epsilon*(1-exp(-alpha*dr))^2*(1-step(dr));
-                                                         attr = epsilon*(1-exp(-alpha*dr))^2*step(dr)-epsilon;
-                                                         fdt1 = max(f1*pair0t1,pair1t1);
-                                                         fdt2 = max(f2*pair0t2,pair1t2);
-                                                         pair1t1 = step(pi/2+dt1)*step(pi/2-dt1);
-                                                         pair1t2 = step(pi/2+dt2)*step(pi/2-dt2);
-                                                         pair0t1 = step(pi+dt1)*step(pi-dt1);
-                                                         pair0t2 = step(pi+dt2)*step(pi-dt2);
-                                                         f1 = 1-cos(dt1)^2;
-                                                         f2 = 1-cos(dt2)^2;
-                                                         dphi = dihedral(d2,d1,a1,a2)-phi0;
-                                                         dr    = distance(d1,a1)-sigma;
-                                                         dt1   = rng*(angle(d2,d1,a1)-t01);
-                                                         dt2   = rng*(angle(a2,a1,d1)-t02);''')
+            pairForce = openmm.CustomHbondForce('''energy;
+                        energy=rep+1/2*(1+cos(dphi))*fdt1*fdt2*attr;
+                        rep  = epsilon*(1-exp(-alpha*dr))^2*(1-step(dr));
+                        attr = epsilon*(1-exp(-alpha*dr))^2*step(dr)-epsilon;
+                        fdt1 = max(f1*pair0t1,pair1t1);
+                        fdt2 = max(f2*pair0t2,pair1t2);
+                        pair1t1 = step(pi/2+dt1)*step(pi/2-dt1);
+                        pair1t2 = step(pi/2+dt2)*step(pi/2-dt2);
+                        pair0t1 = step(pi+dt1)*step(pi-dt1);
+                        pair0t2 = step(pi+dt2)*step(pi-dt2);
+                        f1 = 1-cos(dt1)^2;
+                        f2 = 1-cos(dt2)^2;
+                        dphi = dihedral(d2,d1,a1,a2)-phi0;
+                        dr    = distance(d1,a1)-sigma;
+                        dt1   = rng*(angle(d2,d1,a1)-t01);
+                        dt2   = rng*(angle(a2,a1,d1)-t02);''')
             if self.periodic:
                 pairForce.setNonbondedMethod(pairForce.CutoffPeriodic)
             else:
@@ -1050,36 +1033,31 @@ class BasePair(Force, openmm.CustomHbondForce):
 class CrossStacking(Force):
     def __init__(self, dna, force_group=11, OpenCLPatch=True):
         self.force_group = force_group
-        super().__init__(dna, OpenCLPatch)
+        super().__init__(dna, OpenCLPatch=OpenCLPatch)
 
     def reset(self):
         def crossStackingForce(parametersOnDonor=False):
-            if self.OpenCLPatch:
-                # Divide the energy over two to make the interaction symetric
-                patch_string = '/2'
-            else:
-                patch_string = ''
-            crossForce = openmm.CustomHbondForce(f'''energy{patch_string};temp=dtCS/rng_CS;
-                                                        energy   = fdt3*fdtCS*attr;
-                                                        attr     = epsilon*(1-exp(-alpha*dr))^2*step(dr)-epsilon;
-                                                        fdt3     = max(f1*pair0t3,pair1t3);
-                                                        fdtCS    = max(f2*pair0tCS,pair1tCS);
-                                                        pair0t3  = step(pi+dt3)*step(pi-dt3);
-                                                        pair0tCS = step(pi+dtCS)*step(pi-dtCS);
-                                                        pair1t3  = step(pi/2+dt3)*step(pi/2-dt3);
-                                                        pair1tCS = step(pi/2+dtCS)*step(pi/2-dtCS);
-                                                        f1       = 1-cos(dt3)^2;
-                                                        f2       = 1-cos(dtCS)^2;
-                                                        dr       = distance(d1,a3)-sigma;
-                                                        dt3      = rng_BP*(t3-t03);
-                                                        dtCS     = rng_CS*(tCS-t0CS);
-                                                        tCS      = angle(d2,d1,a3);
-                                                        t3       = acos(cost3lim);
-                                                        cost3lim = min(max(cost3,-0.99),0.99);
-                                                        cost3    = sin(t1)*sin(t2)*cos(phi)-cos(t1)*cos(t2);
-                                                        t1       = angle(d2,d1,a1);
-                                                        t2       = angle(d1,a1,a2);
-                                                        phi      = dihedral(d2,d1,a1,a2);''')
+            crossForce = openmm.CustomHbondForce(f'''energy;
+                         energy   = fdt3*fdtCS*attr/2;
+                         attr     = epsilon*(1-exp(-alpha*dr))^2*step(dr)-epsilon;
+                         fdt3     = max(f1*pair0t3,pair1t3);
+                         fdtCS    = max(f2*pair0tCS,pair1tCS);
+                         pair0t3  = step(pi+dt3)*step(pi-dt3);
+                         pair0tCS = step(pi+dtCS)*step(pi-dtCS);
+                         pair1t3  = step(pi/2+dt3)*step(pi/2-dt3);
+                         pair1tCS = step(pi/2+dtCS)*step(pi/2-dtCS);
+                         f1       = 1-cos(dt3)^2;
+                         f2       = 1-cos(dtCS)^2;
+                         dr       = distance(d1,a3)-sigma;
+                         dt3      = rng_BP*(t3-t03);
+                         dtCS     = rng_CS*(tCS-t0CS);
+                         tCS      = angle(d2,d1,a3);
+                         t3       = acos(cost3lim);
+                         cost3lim = min(max(cost3,-0.99),0.99);
+                         cost3    = sin(t1)*sin(t2)*cos(phi)-cos(t1)*cos(t2);
+                         t1       = angle(d2,d1,a1);
+                         t2       = angle(d1,a1,a2);
+                         phi      = dihedral(d2,d1,a1,a2);''')
             if self.periodic:
                 crossForce.setNonbondedMethod(crossForce.CutoffPeriodic)
             else:
@@ -1145,15 +1123,11 @@ class CrossStacking(Force):
         donors = {i: [] for i in ['A', 'T', 'G', 'C']}
         for donator, donator2, d1, d2, d3 in zip(D1.itertuples(), D3.itertuples(), D1['index'], D2['index'],
                                                  D3['index']):
-            # if d1!=4:
-            #    continue
             d1t = donator.name
             d3t = donator2.name
             c1, c2 = self.crossStackingForces[d1t]
             a1t = _complement[d1t]
-            # print(d1, d2, d3)
             param = cross_definition.loc[[(a1t, d1t, d3t)]].squeeze()
-            # parameters=[param1['t03']*af,param1['T0CS_1']*af,param1['rng_cs1'],param1['rng_bp'],param1['eps_cs1']*ef,param1['alpha_cs1']/df,param1['Sigma_1']*df]
             parameters = [param['t03'] * _af,
                           param['T0CS_2'] * _af,
                           param['rng_cs2'],
@@ -1161,7 +1135,6 @@ class CrossStacking(Force):
                           param['eps_cs2'] * _ef,
                           param['alpha_cs2'] / _df,
                           param['Sigma_2'] * _df]
-            # print(param)
             c1.addDonor(d1, d2, d3)
             c2.addAcceptor(d1, d2, d3, parameters)
             # print("Donor", d1t, d1, d2, d3)
@@ -1170,15 +1143,11 @@ class CrossStacking(Force):
         aceptors = {i: [] for i in ['A', 'T', 'G', 'C']}
         for aceptor, aceptor2, a1, a2, a3 in zip(A1.itertuples(), A3.itertuples(), A1['index'], A2['index'],
                                                  A3['index']):
-            # if a1!=186:
-            #    continue
             a1t = aceptor.name
             a3t = aceptor2.name
             c1, c2 = self.crossStackingForces[_complement[a1t]]
             d1t = _complement[a1t]
             param = cross_definition.loc[[(d1t, a1t, a3t)]].squeeze()
-            # print(param)
-            # print(a1, a2, a3)
             parameters = [param['t03'] * _af,
                           param['T0CS_1'] * _af,
                           param['rng_cs1'],
@@ -1186,7 +1155,6 @@ class CrossStacking(Force):
                           param['eps_cs1'] * _ef,
                           param['alpha_cs1'] / _df,
                           param['Sigma_1'] * _df]
-            # parameters=[param1['t03']*af,param1['T0CS_2']*af,param1['rng_cs2'],param1['rng_bp'],param1['eps_cs2']*ef,param1['alpha_cs2']/df,param1['Sigma_2']*df]
             c1.addAcceptor(a1, a2, a3, parameters)
             c2.addDonor(a1, a2, a3)
             # print("Aceptor", a1t, a1, a2, a3)
@@ -1203,10 +1171,7 @@ class CrossStacking(Force):
                     # This change has a small effect in B-DNA and curved B-DNA
                     # The second change is to make the interaction symetric and dividing the energy over 2
                     # This also reduces the number of exclusions in the force
-                    if self.OpenCLPatch:
-                        maxn = 6
-                    else:
-                        maxn = 9
+                    maxn = 6 if self.OpenCLPatch else 9
                     if (self.dna.atoms.at[i, 'chainID'] == self.dna.atoms.at[j, 'chainID'] and abs(i - j) <= maxn) or \
                             (not self.OpenCLPatch and i > j):
                         c1.addExclusion(ii, jj)
@@ -1262,34 +1227,17 @@ def addNonBondedExclusions(dna, force, OpenCLPatch=True):
     for i, j in exclusions:
         force.addExclusion(i, j)
 
-# def addNonBondedExclusions(dna, force, OpenCLPatch=True):
-#     is_dna = dna.atoms['resname'].isin(_dnaResidues)
-#     atoms = dna.atoms.copy()
-#     selection = atoms[is_dna]
-#     for (i, atom_a), (j, atom_b) in itertools.combinations(selection.iterrows(), r=2):
-#         if j < i:
-#             i, j = j, i
-#             atom_a, atom_b = atom_b, atom_a
-#         # Neighboring residues
-#         if atom_a.chainID == atom_b.chainID and (abs(atom_a.resSeq - atom_b.resSeq) <= 1):
-#             force.addExclusion(i, j)
-#             # print(i, j)
-#         # Base-pair residues
-#         elif OpenCLPatch and (atom_a['name'] in _complement.keys()) and (atom_b['name'] in _complement.keys()) and (
-#                 atom_a['name'] == _complement[atom_b['name']]):
-#             force.addExclusion(i, j)
-#             # print(i, j)
 
 class Exclusion(Force, openmm.CustomNonbondedForce):
-    def __init__(self, dna, force_group = 12):
+    def __init__(self, dna, force_group = 12, OpenCLPatch=True):
         self.force_group = force_group
-        super().__init__(dna)
+        super().__init__(dna, OpenCLPatch=OpenCLPatch)
 
     def reset(self):
         exclusionForce = openmm.CustomNonbondedForce("""energy;
-                                                            energy=(epsilon*((sigma/r)^12-2*(sigma/r)^6)+epsilon)*step(sigma-r);
-                                                            sigma=0.5*(sigma1+sigma2); 
-                                                            epsilon=sqrt(epsilon1*epsilon2)""")
+                         energy=(epsilon*((sigma/r)^12-2*(sigma/r)^6)+epsilon)*step(sigma-r);
+                         sigma=0.5*(sigma1+sigma2);
+                         epsilon=sqrt(epsilon1*epsilon2)""")
         exclusionForce.addPerParticleParameter('epsilon')
         exclusionForce.addPerParticleParameter('sigma')
         exclusionForce.setCutoffDistance(1.8)
@@ -1327,11 +1275,11 @@ class Exclusion(Force, openmm.CustomNonbondedForce):
 
 
 class Electrostatics(Force, openmm.CustomNonbondedForce):
-    def __init__(self, dna, force_group=13, temperature=300*unit.kelvin, salt_concentration=100*unit.millimolar):
+    def __init__(self, dna, force_group=13, temperature=300*unit.kelvin, salt_concentration=100*unit.millimolar, OpenCLPatch=True):
         self.force_group = force_group
         self.T = temperature
         self.C = salt_concentration
-        super().__init__(dna)
+        super().__init__(dna, OpenCLPatch=OpenCLPatch)
 
     def reset(self):
         T = self.T
@@ -1404,11 +1352,11 @@ class ExclusionProteinDNA(ProteinDNAForce):
 
     def reset(self):
         exclusionForce = openmm.CustomNonbondedForce(f"""k_exclusion_protein_DNA*energy;
-                                                            energy=(4*epsilon*((sigma/r)^12-(sigma/r)^6)-offset)*step(cutoff-r);
-                                                            offset=4*epsilon*((sigma/cutoff)^12-(sigma/cutoff)^6);
-                                                            sigma=0.5*(sigma1+sigma2); 
-                                                            epsilon=sqrt(epsilon1*epsilon2);
-                                                            cutoff=sqrt(cutoff1*cutoff2)""")
+                         energy=(4*epsilon*((sigma/r)^12-(sigma/r)^6)-offset)*step(cutoff-r);
+                         offset=4*epsilon*((sigma/cutoff)^12-(sigma/cutoff)^6);
+                         sigma=0.5*(sigma1+sigma2); 
+                         epsilon=sqrt(epsilon1*epsilon2);
+                         cutoff=sqrt(cutoff1*cutoff2)""")
         exclusionForce.addGlobalParameter('k_exclusion_protein_DNA', self.k)
         exclusionForce.addPerParticleParameter('epsilon')
         exclusionForce.addPerParticleParameter('sigma')
@@ -1490,7 +1438,7 @@ class ElectrostaticsProteinDNA(ProteinDNAForce):
         #print(ldby, denominator)
         k = self.k
         electrostaticForce = openmm.CustomNonbondedForce(f"""k_electro_protein_DNA*energy;
-                                                                energy=q1*q2*exp(-r/inter_dh_length)/inter_denominator/r;""")
+                             energy=q1*q2*exp(-r/inter_dh_length)/inter_denominator/r;""")
         electrostaticForce.addPerParticleParameter('q')
         electrostaticForce.addGlobalParameter('k_electro_protein_DNA', k)
         electrostaticForce.addGlobalParameter('inter_dh_length', ldby)
@@ -1592,8 +1540,10 @@ class AMHgoProteinDNA(ProteinDNAForce):
 
         contact_list = np.loadtxt("contact_protein_DNA.dat")
         for i in range(len(contact_list)):
-            if self.aaweight: gamma_ij = contact_list[i][3]
-            else:   gamma_ij = 1.0
+            if self.aaweight:
+                gamma_ij = contact_list[i][3]
+            else:
+                gamma_ij = 1.0
             if (self.chain_protein, int(contact_list[i][0]), 'CB') in atoms.index:
                  CB_protein = atoms[(atoms['chainID'] == self.chain_protein) & (atoms['resSeq'] == int(contact_list[i][0])) & (atoms['name'] == 'CB') & atoms['resname'].isin(_proteinResidues)].copy()
             else:
@@ -1606,7 +1556,8 @@ class AMHgoProteinDNA(ProteinDNAForce):
 
 #class AMHgoProteinDNA(ProteinDNAForce):
 #    """ Protein-DNA amhgo potential (Xinyu)"""
-#    def __init__(self, dna, protein, chain_protein='A', chain_DNA='B', k_amhgo_PD=1*unit.kilocalorie_per_mole, sigma_sq=0.05*unit.nanometers**2, aaweight=False, cutoff=1.8, force_group=16):
+#    def __init__(self, dna, protein, chain_protein='A', chain_DNA='B', k_amhgo_PD=1*unit.kilocalorie_per_mole,
+#                 sigma_sq=0.05*unit.nanometers**2, aaweight=False, cutoff=1.8, force_group=16):
 #        self.force_group = force_group
 #        self.k_amhgo_PD = k_amhgo_PD
 #        self.sigma_sq= sigma_sq
@@ -1637,9 +1588,11 @@ class AMHgoProteinDNA(ProteinDNAForce):
 #            if self.aaweight: gamma_ij = contact_list[i][3]
 #            else:   gamma_ij = 1.0
 #            if (self.chain_protein, int(contact_list[i][0]), 'CB') in atoms.index:
-#                 CB_protein = atoms[(atoms['chainID'] == self.chain_protein) & (atoms['resSeq'] == int(contact_list[i][0])) & (atoms['name'] == 'CB') & atoms['resname'].isin(_proteinResidues)].copy()
+#                 CB_protein = atoms[(atoms['chainID'] == self.chain_protein) & (atoms['resSeq'] == int(contact_list[i][0])) &
+#                                    (atoms['name'] == 'CB') & atoms['resname'].isin(_proteinResidues)].copy()
 #            else:
-#                 CB_protein = atoms[(atoms['chainID'] == self.chain_protein) & (atoms['resSeq'] == int(contact_list[i][0])) & (atoms['name'] == 'CA') & atoms['resname'].isin(_proteinResidues)].copy()
+#                 CB_protein = atoms[(atoms['chainID'] == self.chain_protein) & (atoms['resSeq'] == int(contact_list[i][0])) &
+#                                    (atoms['name'] == 'CA') & atoms['resname'].isin(_proteinResidues)].copy()
 #            base_DNA = atoms[(atoms['chainID'] == self.chain_DNA) & (atoms['resSeq'] == int(contact_list[i][1])) & (atoms['name'].isin(['A', 'T', 'G', 'C'])) & atoms['resname'].isin(_dnaResidues)].copy()
 #            r_ijN = contact_list[i][2]/10.0*unit.nanometers
 #            self.force.addBond(int(CB_protein['index'].values[0]), int(base_DNA['index'].values[0]), [gamma_ij, r_ijN])
@@ -1669,13 +1622,10 @@ class StringProteinDNA(ProteinDNAForce):
         CA_atoms = atoms[(atoms['chainID'] == self.chain_protein) & (atoms['name'] == 'CA') & atoms['resname'].isin(_proteinResidues)].copy()
         S_atoms = atoms[(atoms['chainID'] == self.chain_DNA) & (atoms['name'] == 'S') & atoms['resname'].isin(_dnaResidues)].copy()
         CA_index = [int(atom.index) for atom in CA_atoms.itertuples()]
-        if self.protein_seg: self.force.addGroup([CA_index[x] for x in self.group])     
+        if self.protein_seg: self.force.addGroup([CA_index[x] for x in self.group])
         else:   self.force.addGroup(CA_index)
         self.force.addGroup([int(atom.index) for atom in S_atoms.itertuples()])
-        bondGroups=[]
-        bondGroups.append(0)
-        bondGroups.append(1)
-
+        bondGroups = [0, 1]
         print(self.force.getGroupParameters(0))
         print(self.force.getGroupParameters(1))
 
@@ -1706,15 +1656,11 @@ class String_length_ProteinDNA(ProteinDNAForce):
         if self.protein_seg: self.force.addGroup([CA_index[x] for x in self.group])
         else:   self.force.addGroup(CA_index)
         self.force.addGroup([int(atom.index) for atom in S_atoms.itertuples()])
-        bondGroups=[]
-        bondGroups.append(0)
-        bondGroups.append(1)
-
+        bondGroups = [0, 1]
         print(self.force.getGroupParameters(0))
         print(self.force.getGroupParameters(1))
 
         self.force.addBond(bondGroups)
-
 
 # List forces
 forces = dict(Bond=Bond,
@@ -1733,7 +1679,7 @@ protein_dna_forces=dict(ExclusionProteinDNA=ExclusionProteinDNA,
 # Unit testing
 def test_DNA_from_pdb():
     """ Test correct DNA initialization from PDB"""
-    mol = DNA.fromPDB("Tests/1svc/1svc.pdb")
+    mol = DNA.fromPDB("Tests/1svc/1svc.pdb", template_from_X3DNA=False)
 
 
 def test_DNA_from_gro():
@@ -1743,12 +1689,58 @@ def test_DNA_from_gro():
 
 def test_DNA_from_seq():
     """ Test correct DNA initialization from sequence files"""
-    pass
+    return True #Needs X3DNA
+    seq = 'ATACAAAGGTGCGAGGTTTCTATGCTCCCACG'
+    dna = DNA.fromSequence(seq, dna_type='B_curved')
+
+    # Compute the topology for the DNA structure.
+    # Since the dna was generated from the sequence using X3DNA,
+    # it is not necesary to recompute the geometry.
+
+    dna.computeTopology(template_from_X3DNA=False)
+
+    # Create the system.
+    # To set periodic boundary conditions (periodicBox=[50,50,50]).
+    # The periodic box size is in nanometers.
+    dna.periodic = False
+    s = System(dna, periodicBox=None)
+
+    # Add 3SPN2 forces
+    s.add3SPN2forces(verbose=True)
+
+    import simtk.openmm
+    import simtk.openmm.app
+    import simtk.unit
+    import sys
+    import numpy as np
+
+    # Initialize Molecular Dynamics simulations
+    s.initializeMD(temperature=300 * simtk.unit.kelvin, platform_name='OpenCL')
+    simulation = s.simulation
+
+    # Set initial positions
+    simulation.context.setPositions(s.coord.getPositions())
+
+    energy_unit = simtk.openmm.unit.kilojoule_per_mole
+    # Total energy
+    state = simulation.context.getState(getEnergy=True)
+    energy = state.getPotentialEnergy().value_in_unit(energy_unit)
+    print('TotalEnergy', round(energy, 6), energy_unit.get_symbol())
+
+    # Detailed energy
+    energies = {}
+    for force_name, force in s.forces.items():
+        group = force.getForceGroup()
+        state = simulation.context.getState(getEnergy=True, groups=2 ** group)
+        energies[force_name] = state.getPotentialEnergy().value_in_unit(energy_unit)
+
+    for force_name in s.forces.keys():
+        print(force_name, round(energies[force_name], 6), energy_unit.get_symbol())
 
 
 def test_DNA_from_xyz():
     """Tests the correct parsing from an xyz file"""
-    mol = DNA.fromXYZ('Tests/adna/in00_conf.xyz')
+    mol = DNA.fromXYZ('Tests/adna/in00_conf.xyz', template_from_X3DNA=False)
     assert mol.atoms.at[8, 'name'] == 'P'
     assert round(mol.atoms.at[188, 'y'], 6) == -8.779343
 
@@ -1863,7 +1855,7 @@ class TestEnergies:
         for i, tests in test_sets.groupby(['Folder', 'DNA type']):
             folder = i[0]
             dna_type = i[1]
-            self.dna = DNA.fromXYZ(f'{folder}/in00_conf.xyz', dna_type)
+            self.dna = DNA.fromXYZ(f'{folder}/in00_conf.xyz', dna_type, template_from_X3DNA=False)
             self.system = System(self.dna)
             for j, test in tests.iterrows():
                 print(j)
@@ -1880,9 +1872,7 @@ class TestEnergies:
         self.system = system
         self.system.clearForces()
         self.system.setDefaultPeriodicBoxVectors(*np.diag([2 * periodic_size / 10] * 3))
-
         log = parse_log(log_file)
-
         self.system.clearForces()
         f = forces[force]
         tempforce = f(self.dna)
@@ -1897,11 +1887,11 @@ class TestEnergies:
         simulation = openmm.app.Simulation(self.system.top, self.system, integrator, platform)
         simulation.context.setPositions(self.system.coord.getPositions())
         energy_unit = openmm.unit.kilojoule_per_mole
+        nan_force_particles = 0
         for i in range(10):
             state = simulation.context.getState(getForces=True)
             ff = state.getForces()
             sf = (np.array(ff) ** 2).sum(axis=1) ** .5
-            nan_force_particles = 0
             for j, f in enumerate(sf):
                 if np.isnan(f.value_in_unit(unit.kilojoule_per_mole / unit.nanometer)):
                     print(f"Particle {j + 1}/{len(sf)} has force {f} at step {i}")
@@ -1914,7 +1904,7 @@ class TestEnergies:
         for i, tests in test_sets.groupby(['Folder', 'DNA type']):
             folder = i[0]
             dna_type = i[1]
-            self.dna = DNA.fromXYZ(f'{folder}/in00_conf.xyz', dna_type)
+            self.dna = DNA.fromXYZ(f'{folder}/in00_conf.xyz', dna_type, template_from_X3DNA=False)
             self.system = System(self.dna)
             for j, test in tests.iterrows():
                 print(j)
