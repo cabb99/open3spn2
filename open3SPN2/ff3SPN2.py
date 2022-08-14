@@ -486,7 +486,7 @@ class DNA(object):
         return self
 
     @staticmethod
-    def CoarseGrain(pdb_table):
+    def CoarseGrain(pdb_table, rna=False):
         """ Selects DNA atoms from a pdb table and returns a table containing only the coarse-grained atoms for 3SPN2"""
         masses = {"H": 1.00794, "C": 12.0107, "N": 14.0067, "O": 15.9994, "P": 30.973762, }
         CG = {"O5\'": 'P', "C5\'": 'S', "C4\'": 'S', "O4\'": 'S', "C3\'": 'S', "O3\'": 'P',
@@ -499,6 +499,8 @@ class DNA(object):
               "H1'": 'S', "H8": 'B', "H61": 'B', "H62": 'B', 'H2': 'B', 'H1': 'B', 'H21': 'B',
               'H22': 'B', 'H3': 'B', 'H71': 'B', 'H72': 'B', 'H73': 'B', 'H6': 'B', 'H41': 'B',
               'H42': 'B', 'H5': 'B', "HO3'": 'P'}
+        if rna:
+            CG.update({"HO2\'": 'S', "O2\'": 'S'})
         cols = ['recname', 'serial', 'name', 'altLoc',
                 'resname', 'chainID', 'resSeq', 'iCode',
                 'x', 'y', 'z', 'occupancy', 'tempFactor',
@@ -506,7 +508,10 @@ class DNA(object):
         temp = pdb_table.copy()
 
         # Select DNA residues
-        temp = temp[temp['resname'].isin(['DA', 'DT', 'DG', 'DC'])]
+        if rna:
+            temp = temp[temp['resname'].isin(['A', 'U', 'G', 'C'])]
+        else:
+            temp = temp[temp['resname'].isin(['DA', 'DT', 'DG', 'DC'])]
 
         # Group the atoms by sugar, phosphate or base
         temp['group'] = temp['name'].replace(CG)
@@ -522,7 +527,7 @@ class DNA(object):
         temp = temp[temp['resname'] != 'remove']
 
         # Calculate center of mass
-        temp['element']=temp['element'].str.strip()
+        temp['element'] = temp['element'].str.strip()
         temp['mass'] = temp.element.replace(masses).astype(float)
         temp[['x', 'y', 'z']] = (temp[['x', 'y', 'z']].T * temp['mass']).T[['x', 'y', 'z']]
         temp = temp[temp['element'] != 'H']  # Exclude hydrogens
@@ -540,13 +545,17 @@ class DNA(object):
         Coarse.loc[mask, 'name'] = Coarse[mask].resname.str[-1]  # takes last letter from the residue name
         Coarse['type'] = Coarse['name']
         # Set element (depends on base)
-        Coarse['element'] = Coarse['name'].replace({'P': 'P', 'S': 'H', 'A': 'N', 'T': 'S', 'G': 'C', 'C': 'O'})
-        # Remove P from the beggining
+        if rna:
+            Coarse['name'] = Coarse['name'].replace({'S', 'Sr'})
+        Coarse['element'] = Coarse['name'].replace({'P': 'P', 'S': 'H', 'Sr': 'D',
+                                                    'A': 'N', 'T': 'S', 'U': 'S', 'G': 'C', 'C': 'O'})
+        # Remove P from the beginning
         drop_list = []
         for chain in Coarse.chainID.unique():
             sel = Coarse[Coarse.chainID == chain]
             drop_list += list(sel[(sel.resSeq == sel.resSeq.min()) & sel['name'].isin(['P'])].index)
         Coarse = Coarse.drop(drop_list)
+
         # Renumber
         Coarse.index = range(len(Coarse))
         Coarse['serial'] = Coarse.index
