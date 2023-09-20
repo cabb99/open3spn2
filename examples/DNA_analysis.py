@@ -44,7 +44,7 @@ for force_name in open3SPN2.forces:
         force.addForce(s)
     else:
         s.addForce(force)
-    forces.update({force_name:force})
+    forces[force_name] = force
 
 #Add AWSEM forces
 ft=ffAWSEM.functionTerms
@@ -73,7 +73,7 @@ for force_name in open3SPN2.protein_dna_forces:
     print(force_name)
     force = open3SPN2.protein_dna_forces[force_name](dna,protein)
     s.addForce(force)
-    forces.update({force_name: force})
+    forces[force_name] = force
 
 #Fix exclussions
 for force_name in openAWSEMforces:
@@ -93,7 +93,7 @@ for force_name in openAWSEMforces:
     else:
         force = openAWSEMforces[force_name](protein)
     s.addForce(force)
-    forces.update({force_name: force})
+    forces[force_name] = force
 
 #Initialize the simulation
 temperature=300 * simtk.openmm.unit.kelvin
@@ -112,7 +112,7 @@ trajectory = md.load('output.dcd', top='clean.pdb')
 energy_data = []
 for frame in trajectory:
     simulation.context.setPositions(frame.xyz[0])
-    
+
     #Obtain total energy
     state = simulation.context.getState(getEnergy=True)
     energy = state.getPotentialEnergy().value_in_unit(energy_unit)
@@ -120,7 +120,7 @@ for frame in trajectory:
 
     #Obtain detailed energy
     energies = {}
-    
+
     for force_name, force in forces.items():
         group = force.getForceGroup()
         state = simulation.context.getState(getEnergy=True, groups=2**group)
