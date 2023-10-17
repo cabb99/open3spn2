@@ -443,10 +443,15 @@ class DNA(object):
         element_ix = {'P': 'P', 'S': 'H', 'A': 'N', 'T': 'S', 'C': 'O', 'G': 'C'}  # Elements choosen to keep VMD colors
         self.atoms.loc[:, 'element'] = [element_ix[atomType] for atomType in self.atoms['name']]
 
+        #Complete missing fields
+        for field, value in {'occupancy':0.0, 'beta':0.0, 'segment':'', 'charge':'', 'insertion':''}.items():
+            if field not in self.atoms:
+                self.atoms[field]=value
+
         # Write pdb file
         with open(pdb_file, 'w+') as pdb:
             for i, atom in self.atoms.iterrows():
-                pdb_line = f'ATOM  {i + 1:>5} {atom["name"]:^4} {atom.resname:<3} {atom.chainID}{atom.resSeq:>4}    {atom.x:>8.3f}{atom.y:>8.3f}{atom.z:>8.3f}' + ' ' * 22 + f'{atom.element:2}' + ' ' * 2
+                pdb_line = f'ATOM  {i + 1:>5} {atom["name"]:^4} {atom.resname:<3} {atom.chainID:1}{atom.resSeq:>4}{atom.insertion:1}   {atom.x:>8.3f}{atom.y:>8.3f}{atom.z:>8.3f}{atom.occupancy:>6.2f}{atom.beta:>6.2f}      {atom.segment:4}{atom.element:2}{atom.charge:2}'
                 assert len(pdb_line) == 80, 'An item in the atom table is longer than expected'
                 pdb.write(pdb_line + '\n')
         self.pdb_file = pdb_file
