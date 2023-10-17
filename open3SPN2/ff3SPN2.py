@@ -10,18 +10,18 @@ It also contains Protein-DNA interaction potentials to be used with openAWSEM.
 __author__ = 'Carlos Bueno'
 __version__ = '0.3.2'
 
+import os
+import configparser
+import subprocess
+import itertools
+import numpy as np
+
 import openmm.app
 import openmm
-import simtk.unit as unit
-import configparser
-import numpy as np
-import itertools
+import openmm.unit as unit
 import scipy.spatial.distance as sdist
-import os
 import pdbfixer
 import pandas
-import subprocess
-import nose
 
 __location__ = os.path.realpath(os.path.join(os.getcwd(), os.path.dirname(__file__)))
 _ef = 1 * unit.kilocalorie / unit.kilojoule  # energy scaling factor
