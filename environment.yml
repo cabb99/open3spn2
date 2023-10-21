@@ -8,7 +8,6 @@ dependencies:
 - pandas
 - numpy
 - scipy
-- fftw3f
 - mdtraj
 - openmm
 - pdbfixer
