@@ -1,4 +1,4 @@
-name: py36
+name: open3spn2
 channels:
 - conda-forge
 - defaults

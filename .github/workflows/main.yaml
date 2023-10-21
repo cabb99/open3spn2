@@ -15,19 +15,24 @@ jobs:
 
     strategy:
       matrix:
-        python-version: ["3.11"]
+        python-version: ["3.11"]  # Note: Make sure all dependencies are compatible with this Python version
 
     steps:
     - uses: actions/checkout@v4
 
-    - name: Set up Python ${{ matrix.python-version }}
-      uses: actions/setup-python@v4
+    - name: Set up Conda
+      uses: conda-incubator/setup-miniconda@v2
       with:
-        python-version: ${{ matrix.python-version }}
+        miniconda-version: "latest"
+        channels: conda-forge,defaults
 
-    - name: Install dependencies
+    - name: Create and activate Conda environment
       run: |
-        python -m pip install --upgrade pip
+        conda env create -f environment.yml
+        conda activate open3spn2
+
+    - name: Install package
+      run: |
         pip install -e .
 
     - name: Run tests with pytest
