@@ -22,15 +22,17 @@ import openmm.unit as unit
 import scipy.spatial.distance as sdist
 import pdbfixer
 import pandas
+from .geometry import Transform
+from pathlib import Path
 
-__location__ = os.path.realpath(os.path.join(os.getcwd(), os.path.dirname(__file__)))
+__location__ = Path(__file__).parent.resolve()
 _ef = 1 * unit.kilocalorie / unit.kilojoule  # energy scaling factor
 _df = 1 * unit.angstrom / unit.nanometer  # distance scaling factor
 _af = 1 * unit.degree / unit.radian  # angle scaling factor
 _complement = {'A': 'T', 'T': 'A', 'G': 'C', 'C': 'G'}
 _dnaResidues = ['DA', 'DC', 'DT', 'DG']
 _proteinResidues = ['IPR', 'IGL', 'NGP']
-xml = f'{__location__}/3SPN2.xml'
+xml = __location__/'3SPN2.xml'
 
 
 def parseConfigTable(config_section):
@@ -151,7 +153,7 @@ class DNA(object):
         return f'3SPN2 DNA object ({len(self.atoms)} atoms)'
         # print the sequence and the identity of the DNA object
 
-    def parseConfigurationFile(self, configuration_file=f'{__location__}/3SPN2.conf'):
+    def parseConfigurationFile(self, configuration_file=__location__ /'3SPN2.conf'):
         """Reads the configuration file for the forcefield. The default configuration file is 3SPN2.conf
         and it contains most of the parameters used in the simulation."""
         self.configuration_file = configuration_file
@@ -206,35 +208,93 @@ class DNA(object):
             data += [pandas.concat([pandas.Series([f'{s}-{_complement[s]}'], index=['Sequence']), pair_s, step_s])]
             _s = s
         data = pandas.concat(data, axis=1).T
-        try:
-            location_x3dna = os.environ["X3DNA"]
-        except KeyError as ex:
-            raise X3DNAnotFound from ex
+        # try:
+        #     location_x3dna = os.environ["X3DNA"]
+        # except KeyError as ex:
+        #     raise X3DNAnotFound from ex
 
-        with open(f'{temp_name}_parameters.par', 'w+') as par:
-            par.write(f' {len(data)} # Number of base pairs\n')
-            par.write(f' 0 # local base-pair & step parameters\n')
-            par.write('#')
-            par.write(data.to_csv(sep=' ', index=False))
+        # with open(f'{temp_name}_parameters.par', 'w+') as par:
+        #     par.write(f' {len(data)} # Number of base pairs\n')
+        #     par.write(f' 0 # local base-pair & step parameters\n')
+        #     par.write('#')
+        #     par.write(data.to_csv(sep=' ', index=False))
 
-        # Attempting to call rebuild multiple times
-        # This function fails sometimes when called by multiple because a file with the same name is created
-        attempt = 0
-        max_attempts = 10
-        while attempt < max_attempts:
-            try:
-                subprocess.check_output([f'{location_x3dna}/bin/x3dna_utils',
-                                         'cp_std', 'BDNA'])
-                subprocess.check_output([f'{location_x3dna}/bin/rebuild',
-                                         '-atomic', f'{temp_name}_parameters.par',
-                                         f'{temp_name}_template.pdb'])
-                break
-            except subprocess.CalledProcessError as e:
-                attempt += 1
-                if attempt == max_attempts:
-                    print(f"subprocess.CalledProcessError failed {max_attempts} times {e.args[0]}: {e.args[1]}")
-        template_dna = self.fromPDB(f'{temp_name}_template.pdb', output_pdb=f'{temp_name}_temp.pdb', compute_topology=False)
-        template = template_dna.atoms.copy()
+        # # Attempting to call rebuild multiple times
+        # # This function fails sometimes when called by multiple because a file with the same name is created
+        # attempt = 0
+        # max_attempts = 10
+        # while attempt < max_attempts:
+        #     try:
+        #         subprocess.check_output([f'{location_x3dna}/bin/x3dna_utils',
+        #                                  'cp_std', 'BDNA'])
+        #         subprocess.check_output([f'{location_x3dna}/bin/rebuild',
+        #                                  '-atomic', f'{temp_name}_parameters.par',
+        #                                  f'{temp_name}_template.pdb'])
+        #         break
+        #     except subprocess.CalledProcessError as e:
+        #         attempt += 1
+        #         if attempt == max_attempts:
+        #             print(f"subprocess.CalledProcessError failed {max_attempts} times {e.args[0]}: {e.args[1]}")
+        # template_dna = self.fromPDB(f'{temp_name}_template.pdb', output_pdb=f'{temp_name}_temp.pdb', compute_topology=False)
+        # template = template_dna.atoms.copy()
+
+        new_orien = np.eye(3)
+        new_pos = np.zeros(3)
+
+        forward_strand=[]
+        #reverse_strand=[]
+        xyz = pandas.read_csv(__location__/'DNA_atomic.csv')
+
+        for row in data.itertuples():
+            base1 = row.Sequence[0]
+            #base2 = row.Sequence[-1]
+            base_parameters = np.array(row[2:8])
+            step_parameters = np.array(row[8:16])
+            
+            base_parameters[3:]*=np.pi/180
+            step_parameters[3:]*=np.pi/180
+            
+            t=Transform(*base_parameters)
+
+            b1 = xyz[xyz['base']==base1].copy()
+            #b2 = xyz[xyz['base']==base2].copy()
+            
+            xyz1=b1[['x','y','z']].copy()
+            xyz1 = np.dot(b1[['x','y','z']],t.full_rotation.T)+t.full_displacement
+            xyz1 = np.dot((xyz1-t.half_displacement),t.half_rotation)
+            
+            #xyz2 = b2[['x','y','z']].copy()
+            #xyz2[['y','z']]=-xyz2[['y','z']]
+            #xyz2 = np.dot((xyz2-t.half_displacement),t.half_rotation)
+            
+            # Step parameters
+            t=Transform(*step_parameters)
+            new_pos+=np.dot(t.full_displacement,new_orien)
+            new_orien=np.dot(t.full_rotation.T,new_orien)
+            
+            xyz1 = np.dot(xyz1,new_orien)+new_pos
+            #xyz2 = np.dot(xyz2,new_orien)+new_pos
+            
+            b1[['x','y','z']] = xyz1
+            #b2[['x','y','z']] = xyz2
+            
+            b1['recname']='ATOM'
+            b1['resname']='D'+b1['base']
+            b1['resSeq']=row[0]+1
+            b1['chainID']='A'
+            b1['occupancy']=1.00
+            b1['tempFactor']=1.00
+            
+            forward_strand=forward_strand + [b1]
+            #reverse_strand=[b2] + reverse_strand
+            
+            #print(new_pos)
+            #print(new_orien)
+        forward_strand=pandas.concat(forward_strand)
+        forward_strand.reindex()
+        forward_strand['serial']=forward_strand.index+1
+        template = forward_strand
+
         try:
             self.atoms
         except AttributeError:
@@ -644,7 +704,7 @@ class DNA(object):
 class System(openmm.System):
     """ Wrapper of openmm system class, adds some openmm simulation attributes"""
 
-    def __init__(self, dna, forcefieldFiles=[f'{__location__}/3SPN2.xml'], periodicBox=None):
+    def __init__(self, dna, forcefieldFiles=[__location__/'3SPN2.xml'], periodicBox=None):
         self.dna = dna
         self.top = openmm.app.PDBFile(dna.pdb_file).getTopology()
         if self.top.getUnitCellDimensions() is None:
@@ -1688,250 +1748,6 @@ forces = dict(Bond=Bond,
 
 protein_dna_forces=dict(ExclusionProteinDNA=ExclusionProteinDNA,
                         ElectrostaticsProteinDNA=ElectrostaticsProteinDNA)
-
-
-# Unit testing
-def test_DNA_from_pdb():
-    """ Test correct DNA initialization from PDB"""
-    mol = DNA.fromPDB("Tests/1svc/1svc.pdb", template_from_X3DNA=False)
-
-
-def test_DNA_from_gro():
-    """ Test correct DNA initialization from gromacs files"""
-    pass
-
-
-def test_DNA_from_seq():
-    """ Test correct DNA initialization from sequence files"""
-    return True #Needs X3DNA
-    seq = 'ATACAAAGGTGCGAGGTTTCTATGCTCCCACG'
-    dna = DNA.fromSequence(seq, dna_type='B_curved')
-
-    # Compute the topology for the DNA structure.
-    # Since the dna was generated from the sequence using X3DNA,
-    # it is not necesary to recompute the geometry.
-
-    dna.computeTopology(template_from_X3DNA=False)
-
-    # Create the system.
-    # To set periodic boundary conditions (periodicBox=[50,50,50]).
-    # The periodic box size is in nanometers.
-    dna.periodic = False
-    s = System(dna, periodicBox=None)
-
-    # Add 3SPN2 forces
-    s.add3SPN2forces(verbose=True)
-
-    import simtk.openmm
-    import simtk.openmm.app
-    import simtk.unit
-    import sys
-    import numpy as np
-
-    # Initialize Molecular Dynamics simulations
-    s.initializeMD(temperature=300 * simtk.unit.kelvin, platform_name='OpenCL')
-    simulation = s.simulation
-
-    # Set initial positions
-    simulation.context.setPositions(s.coord.getPositions())
-
-    energy_unit = simtk.openmm.unit.kilojoule_per_mole
-    # Total energy
-    state = simulation.context.getState(getEnergy=True)
-    energy = state.getPotentialEnergy().value_in_unit(energy_unit)
-    print('TotalEnergy', round(energy, 6), energy_unit.get_symbol())
-
-    # Detailed energy
-    energies = {}
-    for force_name, force in s.forces.items():
-        group = force.getForceGroup()
-        state = simulation.context.getState(getEnergy=True, groups=2 ** group)
-        energies[force_name] = state.getPotentialEnergy().value_in_unit(energy_unit)
-
-    for force_name in s.forces.keys():
-        print(force_name, round(energies[force_name], 6), energy_unit.get_symbol())
-
-
-def test_DNA_from_xyz():
-    """Tests the correct parsing from an xyz file"""
-    mol = DNA.fromXYZ('Tests/adna/in00_conf.xyz', template_from_X3DNA=False)
-    assert mol.atoms.at[8, 'name'] == 'P'
-    assert round(mol.atoms.at[188, 'y'], 6) == -8.779343
-
-
-# Functional testing
-
-def parse_xyz(filename=''):
-    columns = ['N', 'timestep', 'id', 'name', 'x', 'y', 'z']
-    data = []
-    with open(filename, 'r') as traj_file:
-        atom = pandas.Series(index=columns)
-        atom['id'] = None
-        for line in traj_file:
-            s = line.split()
-            if len(s) == 1:
-                atom['N'] = int(s[0])
-                if atom['id'] > -1:
-                    assert atom['id'] == atoms
-                atoms = int(s[0])
-            elif len(s) == 3:
-                atom['timestep'] = int(s[2])
-                atom['id'] = 0
-            elif len(s) > 3:
-                atom['name'] = int(s[0])
-                atom['x'], atom['y'], atom['z'] = [float(a) for a in s[1:4]]
-                data += [atom.copy()]
-                atom['id'] += 1
-    xyz_data = pandas.concat(data, axis=1).T
-    for i in ['N', 'timestep', 'id', 'name']:
-        xyz_data[i] = xyz_data[i].astype(int)
-    return xyz_data
-
-
-def parse_log(filename=''):
-    columns = ''
-    log_data = []
-    with open(filename, 'r') as log_file:
-        start = False
-        for line in log_file:
-            if line[:4] == 'Step':
-                columns = line.split()
-                start = True
-                continue
-            if start:
-                try:
-                    log_data += [[float(a) for a in line.split()]]
-                except ValueError:
-                    break
-    log_data = pandas.DataFrame(log_data, columns=columns)
-
-    try:
-        for i in ['Step', 'nbp']:
-            log_data[i] = log_data[i].astype(int)
-    except KeyError:
-        for i in ['Step', 'v_nbp']:
-            log_data[i] = log_data[i].astype(int)
-    return log_data
-
-
-def test_parse_xyz():
-    """Tests the example trajectory parsing"""
-    xyz_data = parse_xyz('Tests/adna/traj.xyz')
-    assert xyz_data.at[1, 'name'] == 7
-    assert xyz_data.at[1, 'x'] == 4.34621
-
-
-def test_parse_log():
-    """Tests the example log parsing"""
-    log_data = parse_log('Tests/adna/sim.log')
-    assert log_data.at[1, 'Step'] == 2000
-    assert log_data.at[1, 'eexcl'] == 0.45734636
-
-
-class TestEnergies:
-    """Tests that the energies are the same as the example outputs from lammps"""
-
-    def _test_energy(self,
-                     log_energy='E_bond',
-                     log_file='Tests/adna/sim.log',
-                     traj_file='Tests/adna/traj.xyz',
-                     force='Bond', periodic_size=94.2,
-                     platform_name='Reference', dna=None, system=None):
-        self.dna = dna
-        self.system = system
-        self.system.clearForces()
-        self.system.setDefaultPeriodicBoxVectors(*np.diag([2 * periodic_size / 10] * 3))
-
-        log = parse_log(log_file)
-
-        self.system.clearForces()
-        f = forces[force]
-        tempforce = f(self.dna)
-        try:
-            tempforce.addForce(self.system)
-        except AttributeError:
-            self.system.addForce(tempforce)
-        energies = self.system.recomputeEnergy(traj_file, platform_name=platform_name)
-        d = (energies / _ef - log[log_energy])
-        diff = np.sqrt((d ** 2).sum() / len(energies))
-        print(f'The difference in the energy term {log_energy} is {diff} Kcal/mol')
-        print(f'The DNA type of the system is {self.dna.DNAtype}')
-        data = np.array([energies / _ef, np.array(log[log_energy]), np.array(d)])
-        results = pandas.DataFrame(data.T, columns=['Openmm energy', 'Lammps energy', 'Difference'])
-        # print(data)
-        print(pandas.DataFrame(data.T, columns=['Openmm energy', 'Lammps energy', 'Difference']))
-        # The maximum error seems to be bonds in curved BDNA (0.002)
-        assert diff < 2E-3, diff
-        assert len(results.dropna()) == len(results), results
-
-    def test_energies(self):
-        test_sets = pandas.read_csv('Tests/test_cases.csv', comment='#')
-        for i, tests in test_sets.groupby(['Folder', 'DNA type']):
-            folder = i[0]
-            dna_type = i[1]
-            self.dna = DNA.fromXYZ(f'{folder}/in00_conf.xyz', dna_type, template_from_X3DNA=False)
-            self.system = System(self.dna)
-            for j, test in tests.iterrows():
-                print(j)
-                yield self._test_energy, test['Energy term'], f'{folder}/{test.Log}', f'{folder}/{test.Trajectory}', \
-                      test['Name'], test['periodic size'], test['Platform'], self.dna, self.system
-
-    def _test_force(self,
-                    log_energy='E_bond',
-                    log_file='Tests/adna/sim.log',
-                    traj_file='Tests/adna/traj.xyz',
-                    force='Bond', periodic_size=94.2,
-                    platform_name='Reference', dna=None, system=None):
-        self.dna = dna
-        self.system = system
-        self.system.clearForces()
-        self.system.setDefaultPeriodicBoxVectors(*np.diag([2 * periodic_size / 10] * 3))
-        log = parse_log(log_file)
-        self.system.clearForces()
-        f = forces[force]
-        tempforce = f(self.dna)
-        try:
-            tempforce.addForce(self.system)
-        except AttributeError:
-            self.system.addForce(tempforce)
-        temperature = 300 * openmm.unit.kelvin
-        integrator = openmm.LangevinIntegrator(temperature, 1 / openmm.unit.picosecond,
-                                                     2 * openmm.unit.femtoseconds)
-        platform = openmm.Platform.getPlatformByName(platform_name)
-        simulation = openmm.app.Simulation(self.system.top, self.system, integrator, platform)
-        simulation.context.setPositions(self.system.coord.getPositions())
-        energy_unit = openmm.unit.kilojoule_per_mole
-        nan_force_particles = 0
-        for i in range(10):
-            state = simulation.context.getState(getForces=True)
-            ff = state.getForces()
-            sf = (np.array(ff) ** 2).sum(axis=1) ** .5
-            for j, f in enumerate(sf):
-                if np.isnan(f.value_in_unit(unit.kilojoule_per_mole / unit.nanometer)):
-                    print(f"Particle {j + 1}/{len(sf)} has force {f} at step {i}")
-                    nan_force_particles += 1
-            simulation.step(1)
-        assert nan_force_particles == 0, "At least one particle has undefined force"
-
-    def test_forces(self):
-        test_sets = pandas.read_csv('Tests/test_cases.csv', comment='#')
-        for i, tests in test_sets.groupby(['Folder', 'DNA type']):
-            folder = i[0]
-            dna_type = i[1]
-            self.dna = DNA.fromXYZ(f'{folder}/in00_conf.xyz', dna_type, template_from_X3DNA=False)
-            self.system = System(self.dna)
-            for j, test in tests.iterrows():
-                print(j)
-                yield self._test_force, test['Energy term'], f'{folder}/{test.Log}', f'{folder}/{test.Trajectory}', \
-                      test['Name'], test['periodic size'], test['Platform'], self.dna, self.system
-
-    def _test_energies_slow(self):
-        test_sets = pandas.read_csv('Tests/test_cases.csv', comment='#')
-        for i, test in test_sets.iterrows():
-            dna_type = test['DNA type']
-            folder = test['Folder']
-            yield self._test_energy, test['Energy term'], f'{folder}/{test.Log}', f'{folder}/{test.Trajectory}', \
-                  test['Name'], folder, dna_type, test['periodic size'], test['Platform']
 
 # Some typical errors
 class BaseError(Exception):
