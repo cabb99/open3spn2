@@ -1,6 +1,5 @@
 name: py36
 channels:
-- omnia
 - conda-forge
 - defaults
 dependencies:
