@@ -27,16 +27,21 @@ jobs:
         channels: conda-forge,defaults
 
     - name: Create and activate Conda environment
+      shell: bash -l {0}
       run: |
         conda env create -f environment.yml
-        conda activate open3spn2
+        
 
     - name: Install package
+      shell: bash -l {0}
       run: |
+        conda activate open3spn2
         pip install -e .
 
     - name: Run tests with pytest
+      shell: bash -l {0}
       run: |
+        conda activate open3spn2
         pytest Tests/
 
     - name: Slack Notification (on failure)
