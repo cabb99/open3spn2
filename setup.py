@@ -29,7 +29,7 @@ setup(
       url = 'https://github.com/cabb99/open3spn2', 
       download_url = 'https://github.com/cabb99/open3spn2/archive/0.2.0.tar.gz',
       keywords = ['dna', 'forcefield', 'openmm'],
-      package_data={'open3SPN2': ['3SPN2.conf','3SPN2.xml']},
+      package_data={'open3SPN2': ['3SPN2.conf','3SPN2.xml','DNA_atomic.csv']},
       include_package_data=True,
       install_requires=[
               'biopython',
