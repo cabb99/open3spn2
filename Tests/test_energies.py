@@ -6,32 +6,47 @@ import openmm
 import openmm.unit as unit
 import pytest
 import pandas as pd
+from pathlib import Path
 
 # Define a fixture to load the test sets
 # Define a module-level variable to store the test sets
 _test_sets = pd.read_csv('Tests/test_cases.csv', comment='#')
 _ef = 1 * unit.kilocalorie / unit.kilojoule  # energy scaling factor
 
+@pytest.fixture
+def skip_platform(request):
+    return request.config.getoption("--skip-platform")
+
+id_list = [f"{row['Name']}_{row['Platform']}" for _, row in _test_sets.iterrows()]
 class TestEnergies:
     """Tests that the energies are the same as the example outputs from lammps"""
+    @pytest.mark.parametrize(
+        "name, dna_type, folder, trajectory, log, energy_term, periodic_size, platform",
+        [(row['Name'], row['DNA type'], row['Folder'], row['Trajectory'], row['Log'],
+          row['Energy term'], row['periodic size'], row['Platform']) for _, row in _test_sets.iterrows()],
+        ids=id_list  # Use the function here
+    )
+    def test_energies(self, name, dna_type, folder, trajectory, log, energy_term, periodic_size, platform, skip_platform):
+        if skip_platform and skip_platform.lower() == platform.lower():
+            pytest.skip(f"Skipping tests for platform: {platform}")
+        folder = Path(folder)
+        dna = DNA.fromXYZ(f'{folder}/in00_conf.xyz', dna_type, template_from_X3DNA=False)
+        system = System(dna)
+        self._test_energy(energy_term, folder/log, folder/trajectory, name, periodic_size, platform, dna, system)
 
-    @pytest.mark.parametrize("index, test_case", _test_sets.iterrows())
-    def test_energies(self, index, test_case):
-        folder = test_case['Folder']
-        dna_type = test_case['DNA type']  # Assuming 'DNA type' is the second column
-        self.dna = DNA.fromXYZ(f'{folder}/in00_conf.xyz', dna_type, template_from_X3DNA=False)
-        self.system = System(self.dna)
-        self._test_energy(test_case['Energy term'], f'{folder}/{test_case.Log}', f'{folder}/{test_case.Trajectory}',
-                          test_case['Name'], test_case['periodic size'], test_case['Platform'], self.dna, self.system)
-
-    @pytest.mark.parametrize("index, test_case", _test_sets.iterrows())
-    def test_forces(self, index, test_case):
-        folder = test_case['Folder']
-        dna_type = test_case['DNA type']  # Assuming 'DNA type' is the second column
-        self.dna = DNA.fromXYZ(f'{folder}/in00_conf.xyz', dna_type, template_from_X3DNA=False)
-        self.system = System(self.dna)
-        self._test_force(test_case['Energy term'], f'{folder}/{test_case.Log}', f'{folder}/{test_case.Trajectory}',
-                         test_case['Name'], test_case['periodic size'], test_case['Platform'], self.dna, self.system)
+    @pytest.mark.parametrize(
+        "name, dna_type, folder, trajectory, log, energy_term, periodic_size, platform",
+        [(row['Name'], row['DNA type'], row['Folder'], row['Trajectory'], row['Log'],
+          row['Energy term'], row['periodic size'], row['Platform']) for _, row in _test_sets.iterrows()],
+        ids=id_list  # Use the function here
+    )
+    def test_energies(self, name, dna_type, folder, trajectory, log, energy_term, periodic_size, platform, skip_platform):
+        if skip_platform and skip_platform.lower() == platform.lower():
+            pytest.skip(f"Skipping tests for platform: {platform}")
+        folder = Path(folder)
+        dna = DNA.fromXYZ(f'{folder}/in00_conf.xyz', dna_type, template_from_X3DNA=False)
+        system = System(dna)
+        self._test_force(energy_term, folder/log, folder/trajectory, name, periodic_size, platform, dna, system)
 
   
     def _test_energy(self,

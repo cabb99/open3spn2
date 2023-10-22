@@ -33,7 +33,7 @@ def test_DNA_from_seq():
     s.add3SPN2forces(verbose=True)
 
     # Initialize Molecular Dynamics simulations
-    s.initializeMD(temperature=300 * openmm.unit.kelvin, platform_name='OpenCL')
+    s.initializeMD(temperature=300 * openmm.unit.kelvin, platform_name='CPU')
     simulation = s.simulation
 
     # Set initial positions
@@ -77,3 +77,30 @@ def test_parse_log():
     log_data = parse_log('Tests/adna/sim.log')
     assert log_data.at[1, 'Step'] == 2000
     assert log_data.at[1, 'eexcl'] == 0.45734636
+
+
+def test_transform_zero():
+    transform = Transform()
+    
+    np.testing.assert_almost_equal(transform.full_rotation, np.eye(3), decimal=7)
+    np.testing.assert_almost_equal(transform.half_rotation, np.eye(3), decimal=7)
+    np.testing.assert_almost_equal(transform.full_displacement, [0, 0, 0], decimal=7)
+    np.testing.assert_almost_equal(transform.half_displacement, [0, 0, 0], decimal=7)
+
+def test_transform_known():
+    transform = Transform(0.07, -0.19, 0.07, 
+                          1.8/180*np.pi, -15.0/180*np.pi, 1.5/180*np.pi)
+    
+    expected_full_rotation = np.array([[0.965592, -0.029813, -0.258348], 
+                                       [0.021636,  0.999173, -0.034438], 
+                                       [0.259161,  0.027663,  0.965438]])
+    expected_half_rotation = np.array([[0.991374, -0.014114, -0.130305],
+                                       [0.011951,  0.999778, -0.017370],
+                                       [0.130521,  0.015662,  0.991322]])
+    expected_full_displacement = [0.062957, -0.190337, 0.075553]
+    expected_half_displacement = [0.031478, -0.095169, 0.037777]
+    
+    np.testing.assert_almost_equal(transform.full_rotation, expected_full_rotation, decimal=6)
+    np.testing.assert_almost_equal(transform.half_rotation, expected_half_rotation, decimal=6)
+    np.testing.assert_almost_equal(transform.full_displacement, expected_full_displacement, decimal=6)
+    np.testing.assert_almost_equal(transform.half_displacement, expected_half_displacement, decimal=6)
