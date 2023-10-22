@@ -143,6 +143,26 @@ def pdb2table(pdb):
     atom_list.index = atom_list['serial']
     return atom_list
 
+def writePDB(atoms, pdb_file='clean.pdb'):
+    """ Writes a minimal version of the pdb file needed for openmm """
+    # Compute chain field
+    if type(atoms['chainID'].iloc[0]) is not str:
+        chain_ix = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz'
+        atoms['chainID'] = [chain_ix[i - 1] for i in atoms['chainID']]
+
+    #Complete missing fields
+    for field, value in {'occupancy':0.0, 'beta':0.0, 'segment':'', 'charge':'', 'insertion':''}.items():
+        if field not in atoms:
+            atoms[field]=value
+
+    # Write pdb file
+    with open(pdb_file, 'w+') as pdb:
+        for i, atom in atoms.iterrows():
+            pdb_line = f'ATOM  {i + 1:>5} {atom["name"]:^4} {atom.resname:<3} {atom.chainID:1}{atom.resSeq:>4}{atom.insertion:1}   {atom.x:>8.3f}{atom.y:>8.3f}{atom.z:>8.3f}{atom.occupancy:>6.2f}{atom.beta:>6.2f}      {atom.segment:4}{atom.element:2}{atom.charge:2}'
+            assert len(pdb_line) == 80, 'An item in the atom table is longer than expected'
+            pdb.write(pdb_line + '\n')
+    return pdb_file
+
 class DNA(object):
     """ A Coarse Grained DNA object."""
     def __init__(self, periodic=True):
@@ -242,12 +262,12 @@ class DNA(object):
         new_pos = np.zeros(3)
 
         forward_strand=[]
-        #reverse_strand=[]
+        reverse_strand=[]
         xyz = pandas.read_csv(__location__/'DNA_atomic.csv')
 
         for row in data.itertuples():
             base1 = row.Sequence[0]
-            #base2 = row.Sequence[-1]
+            base2 = row.Sequence[-1]
             base_parameters = np.array(row[2:8])
             step_parameters = np.array(row[8:16])
             
@@ -257,15 +277,15 @@ class DNA(object):
             t=Transform(*base_parameters)
 
             b1 = xyz[xyz['base']==base1].copy()
-            #b2 = xyz[xyz['base']==base2].copy()
+            b2 = xyz[xyz['base']==base2].copy()
             
             xyz1=b1[['x','y','z']].copy()
             xyz1 = np.dot(b1[['x','y','z']],t.full_rotation.T)+t.full_displacement
             xyz1 = np.dot((xyz1-t.half_displacement),t.half_rotation)
             
-            #xyz2 = b2[['x','y','z']].copy()
-            #xyz2[['y','z']]=-xyz2[['y','z']]
-            #xyz2 = np.dot((xyz2-t.half_displacement),t.half_rotation)
+            xyz2 = b2[['x','y','z']].copy()
+            xyz2[['y','z']]=-xyz2[['y','z']]
+            xyz2 = np.dot((xyz2-t.half_displacement),t.half_rotation)
             
             # Step parameters
             t=Transform(*step_parameters)
@@ -276,30 +296,33 @@ class DNA(object):
             #xyz2 = np.dot(xyz2,new_orien)+new_pos
             
             b1[['x','y','z']] = xyz1
-            #b2[['x','y','z']] = xyz2
+            b2[['x','y','z']] = xyz2
             
-            b1['recname']='ATOM'
-            b1['resname']='D'+b1['base']
-            b1['resSeq']=row[0]+1
+            for b in [b1,b2]:
+                b['recname']='ATOM'
+                b['resname']='D'+b['base']
+                b['resSeq']=row[0]+1
+                b['occupancy']=1.00
+                b['tempFactor']=1.00
+                b['element']=b['name'].str[0]
+            
             b1['chainID']='A'
-            b1['occupancy']=1.00
-            b1['tempFactor']=1.00
-            
+            b2['chainID']='B'
+
             forward_strand=forward_strand + [b1]
-            #reverse_strand=[b2] + reverse_strand
+            reverse_strand=[b2] + reverse_strand
             
-            #print(new_pos)
-            #print(new_orien)
-        forward_strand=pandas.concat(forward_strand)
-        forward_strand.reindex()
-        forward_strand['serial']=forward_strand.index+1
-        template = forward_strand
+
+        template=pandas.concat(forward_strand+reverse_strand)
+        template.reindex()
+        template['serial']=template.index+1
+        writePDB(template,pdb_file='temp_template.pdb')
 
         try:
             self.atoms
         except AttributeError:
             return template
-
+        
         template = template[template['chainID'] == 'A']
         original = self.atoms.copy()
         original.index = original['chainID'].astype(str) + '_' + original['resSeq'].astype(str) + '_' + original['name']
@@ -493,29 +516,12 @@ class DNA(object):
             self.dihedrals['t0'] = -d - 180
 
     def writePDB(self, pdb_file='clean.pdb'):
-        """ Writes a minimal version of the pdb file needed for openmm """
-        # Compute chain field
-        if type(self.atoms['chainID'].iloc[0]) is not str:
-            chain_ix = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz'
-            self.atoms['chainID'] = [chain_ix[i - 1] for i in self.atoms['chainID']]
-
         # Compute element fields
         element_ix = {'P': 'P', 'S': 'H', 'A': 'N', 'T': 'S', 'C': 'O', 'G': 'C'}  # Elements choosen to keep VMD colors
         self.atoms.loc[:, 'element'] = [element_ix[atomType] for atomType in self.atoms['name']]
-
-        #Complete missing fields
-        for field, value in {'occupancy':0.0, 'beta':0.0, 'segment':'', 'charge':'', 'insertion':''}.items():
-            if field not in self.atoms:
-                self.atoms[field]=value
-
-        # Write pdb file
-        with open(pdb_file, 'w+') as pdb:
-            for i, atom in self.atoms.iterrows():
-                pdb_line = f'ATOM  {i + 1:>5} {atom["name"]:^4} {atom.resname:<3} {atom.chainID:1}{atom.resSeq:>4}{atom.insertion:1}   {atom.x:>8.3f}{atom.y:>8.3f}{atom.z:>8.3f}{atom.occupancy:>6.2f}{atom.beta:>6.2f}      {atom.segment:4}{atom.element:2}{atom.charge:2}'
-                assert len(pdb_line) == 80, 'An item in the atom table is longer than expected'
-                pdb.write(pdb_line + '\n')
-        self.pdb_file = pdb_file
-        return pdb_file
+        
+        self.pdb_file = writePDB(self.atoms,pdb_file)
+        return self.pdb_file
 
     @classmethod
     def fromCoarsePDB(cls, pdb_file, dna_type='B_curved', template_from_X3DNA=True, temp_name='temp',
@@ -1748,6 +1754,60 @@ forces = dict(Bond=Bond,
 
 protein_dna_forces=dict(ExclusionProteinDNA=ExclusionProteinDNA,
                         ElectrostaticsProteinDNA=ElectrostaticsProteinDNA)
+
+
+def parse_xyz(filename=''):
+    columns = ['N', 'timestep', 'id', 'name', 'x', 'y', 'z']
+    data = []
+    with open(filename, 'r') as traj_file:
+        atom = pandas.Series(index=columns)
+        atom['id'] = None
+        for line in traj_file:
+            s = line.split()
+            if len(s) == 1:
+                atom['N'] = int(s[0])
+                if atom['id'] > -1:
+                    assert atom['id'] == atoms
+                atoms = int(s[0])
+            elif len(s) == 3:
+                atom['timestep'] = int(s[2])
+                atom['id'] = 0
+            elif len(s) > 3:
+                atom['name'] = int(s[0])
+                atom['x'], atom['y'], atom['z'] = [float(a) for a in s[1:4]]
+                data += [atom.copy()]
+                atom['id'] += 1
+    xyz_data = pandas.concat(data, axis=1).T
+    for i in ['N', 'timestep', 'id', 'name']:
+        xyz_data[i] = xyz_data[i].astype(int)
+    return xyz_data
+
+
+def parse_log(filename=''):
+    columns = ''
+    log_data = []
+    with open(filename, 'r') as log_file:
+        start = False
+        for line in log_file:
+            if line[:4] == 'Step':
+                columns = line.split()
+                start = True
+                continue
+            if start:
+                try:
+                    log_data += [[float(a) for a in line.split()]]
+                except ValueError:
+                    break
+    log_data = pandas.DataFrame(log_data, columns=columns)
+
+    try:
+        for i in ['Step', 'nbp']:
+            log_data[i] = log_data[i].astype(int)
+    except KeyError:
+        for i in ['Step', 'v_nbp']:
+            log_data[i] = log_data[i].astype(int)
+    return log_data
+
 
 # Some typical errors
 class BaseError(Exception):

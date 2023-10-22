@@ -21,7 +21,7 @@ def test_DNA_from_seq():
     # Since the dna was generated from the sequence using X3DNA,
     # it is not necesary to recompute the geometry.
 
-    dna.computeTopology(template_from_X3DNA=False)
+    dna.computeTopology(template_from_X3DNA=True)
 
     # Create the system.
     # To set periodic boundary conditions (periodicBox=[50,50,50]).
@@ -64,59 +64,6 @@ def test_DNA_from_xyz():
 
 
 # Functional testing
-
-def parse_xyz(filename=''):
-    columns = ['N', 'timestep', 'id', 'name', 'x', 'y', 'z']
-    data = []
-    with open(filename, 'r') as traj_file:
-        atom = pandas.Series(index=columns)
-        atom['id'] = None
-        for line in traj_file:
-            s = line.split()
-            if len(s) == 1:
-                atom['N'] = int(s[0])
-                if atom['id'] > -1:
-                    assert atom['id'] == atoms
-                atoms = int(s[0])
-            elif len(s) == 3:
-                atom['timestep'] = int(s[2])
-                atom['id'] = 0
-            elif len(s) > 3:
-                atom['name'] = int(s[0])
-                atom['x'], atom['y'], atom['z'] = [float(a) for a in s[1:4]]
-                data += [atom.copy()]
-                atom['id'] += 1
-    xyz_data = pandas.concat(data, axis=1).T
-    for i in ['N', 'timestep', 'id', 'name']:
-        xyz_data[i] = xyz_data[i].astype(int)
-    return xyz_data
-
-
-def parse_log(filename=''):
-    columns = ''
-    log_data = []
-    with open(filename, 'r') as log_file:
-        start = False
-        for line in log_file:
-            if line[:4] == 'Step':
-                columns = line.split()
-                start = True
-                continue
-            if start:
-                try:
-                    log_data += [[float(a) for a in line.split()]]
-                except ValueError:
-                    break
-    log_data = pandas.DataFrame(log_data, columns=columns)
-
-    try:
-        for i in ['Step', 'nbp']:
-            log_data[i] = log_data[i].astype(int)
-    except KeyError:
-        for i in ['Step', 'v_nbp']:
-            log_data[i] = log_data[i].astype(int)
-    return log_data
-
 
 def test_parse_xyz():
     """Tests the example trajectory parsing"""
