@@ -1075,12 +1075,12 @@ class BasePair(Force, openmm.CustomHbondForce):
 
             # Define parameters
             parameters = [pair.torsion * _af,
-                          pair.sigma * _df,
+                          pair.sigma,
                           pair.t1 * _af,
                           pair.t2 * _af,
                           pair.rang,
-                          pair.epsilon * _ef,
-                          pair.alpha / _df]
+                          pair.epsilon,
+                          pair.alpha]
 
             # Add donors and acceptors
             # Here I am including the same atom twice,
@@ -1212,9 +1212,9 @@ class CrossStacking(Force):
                           param['T0CS_2'] * _af,
                           param['rng_cs2'],
                           param['rng_bp'],
-                          param['eps_cs2'] * _ef,
-                          param['alpha_cs2'] / _df,
-                          param['Sigma_2'] * _df]
+                          param['eps_cs2'],
+                          param['alpha_cs2'],
+                          param['Sigma_2']]
             c1.addDonor(d1, d2, d3)
             c2.addAcceptor(d1, d2, d3, parameters)
             # print("Donor", d1t, d1, d2, d3)
@@ -1232,9 +1232,9 @@ class CrossStacking(Force):
                           param['T0CS_1'] * _af,
                           param['rng_cs1'],
                           param['rng_bp'],
-                          param['eps_cs1'] * _ef,
-                          param['alpha_cs1'] / _df,
-                          param['Sigma_1'] * _df]
+                          param['eps_cs1'],
+                          param['alpha_cs1'],
+                          param['Sigma_1']]
             c1.addAcceptor(a1, a2, a3, parameters)
             c2.addDonor(a1, a2, a3)
             # print("Aceptor", a1t, a1, a2, a3)

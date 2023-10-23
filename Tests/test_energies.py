@@ -40,7 +40,7 @@ class TestEnergies:
           row['Energy term'], row['periodic size'], row['Platform']) for _, row in _test_sets.iterrows()],
         ids=id_list  # Use the function here
     )
-    def test_energies(self, name, dna_type, folder, trajectory, log, energy_term, periodic_size, platform, skip_platform):
+    def test_forces(self, name, dna_type, folder, trajectory, log, energy_term, periodic_size, platform, skip_platform):
         if skip_platform and skip_platform.lower() == platform.lower():
             pytest.skip(f"Skipping tests for platform: {platform}")
         folder = Path(folder)
@@ -126,3 +126,10 @@ class TestEnergies:
             folder = test['Folder']
             yield self._test_energy, test['Energy term'], f'{folder}/{test.Log}', f'{folder}/{test.Trajectory}', \
                   test['Name'], folder, dna_type, test['periodic size'], test['Platform']
+
+if __name__=='__main__':
+    skip_platform=False
+    for _, (name, dna_type, folder, trajectory, log, energy_term, periodic_size, platform) in _test_sets.iterrows():
+        test=TestEnergies()
+        test.test_energies(name, dna_type, folder, trajectory, log, energy_term, periodic_size, platform, skip_platform)
+        test.test_forces(name, dna_type, folder, trajectory, log, energy_term, periodic_size, platform, skip_platform)
