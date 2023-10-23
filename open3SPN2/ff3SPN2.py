@@ -1334,7 +1334,7 @@ class Exclusion(Force, openmm.CustomNonbondedForce):
         particle_definition.index = particle_definition.name
 
         # Reduces or increases the cutoff to the maximum particle radius
-        self.force.setCutoffDistance(particle_definition.radius.max() * _df)
+        self.force.setCutoffDistance(particle_definition.radius.max())
 
         # Select only dna atoms
         is_dna = self.dna.atoms['resname'].isin(_dnaResidues)
@@ -1343,8 +1343,8 @@ class Exclusion(Force, openmm.CustomNonbondedForce):
         for i, atom in atoms.iterrows():
             if atom.is_dna:
                 param = particle_definition.loc[atom['name']]
-                parameters = [param.epsilon * _ef,
-                              param.radius * _df]
+                parameters = [param.epsilon,
+                              param.radius]
             else:
                 parameters = [0, .1]  # Null energy and some radius)
             # print(i, parameters)
@@ -1475,15 +1475,15 @@ class ExclusionProteinDNA(ProteinDNAForce):
         for i, atom in atoms.iterrows():
             if atom.is_dna:
                 param = particle_definition.loc['DNA' + atom['name']]
-                parameters = [param.epsilon * _ef,
-                              param.radius * _df,
-                              param.cutoff * _df]
+                parameters = [param.epsilon,
+                              param.radius,
+                              param.cutoff]
                 DNA_list += [i]
             elif atom.is_protein:
                 param = particle_definition.loc['Protein' + atom['name']]
-                parameters = [param.epsilon * _ef,
-                              param.radius * _df,
-                              param.cutoff * _df]
+                parameters = [param.epsilon,
+                              param.radius,
+                              param.cutoff]
                 protein_list += [i]
             else:
                 print(f'Residue {i} not included in protein-DNA interactions')
