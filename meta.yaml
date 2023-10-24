@@ -1,10 +1,10 @@
 package:
   name: "open3spn2"
-  version: "0.2.2"
+  version: "0.3.2"
 
 source:
   git_url: https://github.com/cabb99/open3spn2.git
-  git_rev: 0.2.2
+  git_rev: 0.3.2
   git_depth: -1 # (Defaults to -1/not shallow)
 
 build:

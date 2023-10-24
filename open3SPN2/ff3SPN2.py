@@ -8,29 +8,31 @@ It also contains Protein-DNA interaction potentials to be used with openAWSEM.
 
 
 __author__ = 'Carlos Bueno'
-__version__ = '0.2'
+__version__ = '0.3.2'
 
-import simtk.openmm.app
-import simtk.openmm
-import simtk.unit as unit
-import configparser
-import numpy as np
-import itertools
-import scipy.spatial.distance as sdist
 import os
+import configparser
+import subprocess
+import itertools
+import numpy as np
+
+import openmm.app
+import openmm
+import openmm.unit as unit
+import scipy.spatial.distance as sdist
 import pdbfixer
 import pandas
-import subprocess
-import nose
+from .geometry import Transform
+from pathlib import Path
 
-__location__ = os.path.realpath(os.path.join(os.getcwd(), os.path.dirname(__file__)))
+__location__ = Path(__file__).parent.resolve()
 _ef = 1 * unit.kilocalorie / unit.kilojoule  # energy scaling factor
 _df = 1 * unit.angstrom / unit.nanometer  # distance scaling factor
 _af = 1 * unit.degree / unit.radian  # angle scaling factor
 _complement = {'A': 'T', 'T': 'A', 'G': 'C', 'C': 'G'}
 _dnaResidues = ['DA', 'DC', 'DT', 'DG']
 _proteinResidues = ['IPR', 'IGL', 'NGP']
-xml = f'{__location__}/3SPN2.xml'
+xml = __location__/'3SPN2.xml'
 
 
 def parseConfigTable(config_section):
@@ -141,6 +143,26 @@ def pdb2table(pdb):
     atom_list.index = atom_list['serial']
     return atom_list
 
+def writePDB(atoms, pdb_file='clean.pdb'):
+    """ Writes a minimal version of the pdb file needed for openmm """
+    # Compute chain field
+    if type(atoms['chainID'].iloc[0]) is not str:
+        chain_ix = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz'
+        atoms['chainID'] = [chain_ix[i - 1] for i in atoms['chainID']]
+
+    #Complete missing fields
+    for field, value in {'occupancy':0.0, 'beta':0.0, 'segment':'', 'charge':'', 'insertion':''}.items():
+        if field not in atoms:
+            atoms[field]=value
+
+    # Write pdb file
+    with open(pdb_file, 'w+') as pdb:
+        for i, atom in atoms.iterrows():
+            pdb_line = f'ATOM  {i + 1:>5} {atom["name"]:^4} {atom.resname:<3} {atom.chainID:1}{atom.resSeq:>4}{atom.insertion:1}   {atom.x:>8.3f}{atom.y:>8.3f}{atom.z:>8.3f}{atom.occupancy:>6.2f}{atom.beta:>6.2f}      {atom.segment:4}{atom.element:2}{atom.charge:2}'
+            assert len(pdb_line) == 80, 'An item in the atom table is longer than expected'
+            pdb.write(pdb_line + '\n')
+    return pdb_file
+
 class DNA(object):
     """ A Coarse Grained DNA object."""
     def __init__(self, periodic=True):
@@ -151,7 +173,7 @@ class DNA(object):
         return f'3SPN2 DNA object ({len(self.atoms)} atoms)'
         # print the sequence and the identity of the DNA object
 
-    def parseConfigurationFile(self, configuration_file=f'{__location__}/3SPN2.conf'):
+    def parseConfigurationFile(self, configuration_file=__location__ /'3SPN2.conf'):
         """Reads the configuration file for the forcefield. The default configuration file is 3SPN2.conf
         and it contains most of the parameters used in the simulation."""
         self.configuration_file = configuration_file
@@ -206,40 +228,101 @@ class DNA(object):
             data += [pandas.concat([pandas.Series([f'{s}-{_complement[s]}'], index=['Sequence']), pair_s, step_s])]
             _s = s
         data = pandas.concat(data, axis=1).T
-        try:
-            location_x3dna = os.environ["X3DNA"]
-        except KeyError as ex:
-            raise X3DNAnotFound from ex
+        # try:
+        #     location_x3dna = os.environ["X3DNA"]
+        # except KeyError as ex:
+        #     raise X3DNAnotFound from ex
 
-        with open(f'{temp_name}_parameters.par', 'w+') as par:
-            par.write(f' {len(data)} # Number of base pairs\n')
-            par.write(f' 0 # local base-pair & step parameters\n')
-            par.write('#')
-            par.write(data.to_csv(sep=' ', index=False))
+        # with open(f'{temp_name}_parameters.par', 'w+') as par:
+        #     par.write(f' {len(data)} # Number of base pairs\n')
+        #     par.write(f' 0 # local base-pair & step parameters\n')
+        #     par.write('#')
+        #     par.write(data.to_csv(sep=' ', index=False))
 
-        # Attempting to call rebuild multiple times
-        # This function fails sometimes when called by multiple because a file with the same name is created
-        attempt = 0
-        max_attempts = 10
-        while attempt < max_attempts:
-            try:
-                subprocess.check_output([f'{location_x3dna}/bin/x3dna_utils',
-                                         'cp_std', 'BDNA'])
-                subprocess.check_output([f'{location_x3dna}/bin/rebuild',
-                                         '-atomic', f'{temp_name}_parameters.par',
-                                         f'{temp_name}_template.pdb'])
-                break
-            except subprocess.CalledProcessError as e:
-                attempt += 1
-                if attempt == max_attempts:
-                    print(f"subprocess.CalledProcessError failed {max_attempts} times {e.args[0]}: {e.args[1]}")
-        template_dna = self.fromPDB(f'{temp_name}_template.pdb', output_pdb=f'{temp_name}_temp.pdb', compute_topology=False)
-        template = template_dna.atoms.copy()
+        # # Attempting to call rebuild multiple times
+        # # This function fails sometimes when called by multiple because a file with the same name is created
+        # attempt = 0
+        # max_attempts = 10
+        # while attempt < max_attempts:
+        #     try:
+        #         subprocess.check_output([f'{location_x3dna}/bin/x3dna_utils',
+        #                                  'cp_std', 'BDNA'])
+        #         subprocess.check_output([f'{location_x3dna}/bin/rebuild',
+        #                                  '-atomic', f'{temp_name}_parameters.par',
+        #                                  f'{temp_name}_template.pdb'])
+        #         break
+        #     except subprocess.CalledProcessError as e:
+        #         attempt += 1
+        #         if attempt == max_attempts:
+        #             print(f"subprocess.CalledProcessError failed {max_attempts} times {e.args[0]}: {e.args[1]}")
+        # template_dna = self.fromPDB(f'{temp_name}_template.pdb', output_pdb=f'{temp_name}_temp.pdb', compute_topology=False)
+        # template = template_dna.atoms.copy()
+
+        new_orien = np.eye(3)
+        new_pos = np.zeros(3)
+
+        forward_strand=[]
+        reverse_strand=[]
+        xyz = pandas.read_csv(__location__/'DNA_atomic.csv')
+
+        for row in data.itertuples():
+            base1 = row.Sequence[0]
+            base2 = row.Sequence[-1]
+            base_parameters = np.array(row[2:8])
+            step_parameters = np.array(row[8:16])
+            
+            base_parameters[3:]*=np.pi/180
+            step_parameters[3:]*=np.pi/180
+            
+            t=Transform(*base_parameters)
+
+            b1 = xyz[xyz['base']==base1].copy()
+            b2 = xyz[xyz['base']==base2].copy()
+            
+            xyz1=b1[['x','y','z']].copy()
+            xyz1 = np.dot(b1[['x','y','z']],t.full_rotation.T)+t.full_displacement
+            xyz1 = np.dot((xyz1-t.half_displacement),t.half_rotation)
+            
+            xyz2 = b2[['x','y','z']].copy()
+            xyz2[['y','z']]=-xyz2[['y','z']]
+            xyz2 = np.dot((xyz2-t.half_displacement),t.half_rotation)
+            
+            # Step parameters
+            t=Transform(*step_parameters)
+            new_pos+=np.dot(t.full_displacement,new_orien)
+            new_orien=np.dot(t.full_rotation.T,new_orien)
+            
+            xyz1 = np.dot(xyz1,new_orien)+new_pos
+            #xyz2 = np.dot(xyz2,new_orien)+new_pos
+            
+            b1[['x','y','z']] = xyz1
+            b2[['x','y','z']] = xyz2
+            
+            for b in [b1,b2]:
+                b['recname']='ATOM'
+                b['resname']='D'+b['base']
+                b['resSeq']=row[0]+1
+                b['occupancy']=1.00
+                b['tempFactor']=1.00
+                b['element']=b['name'].str[0]
+            
+            b1['chainID']='A'
+            b2['chainID']='B'
+
+            forward_strand=forward_strand + [b1]
+            reverse_strand=[b2] + reverse_strand
+            
+
+        template=pandas.concat(forward_strand+reverse_strand)
+        template.reindex()
+        template['serial']=template.index+1
+        writePDB(template,pdb_file='temp_template.pdb')
+
         try:
             self.atoms
         except AttributeError:
             return template
-
+        
         template = template[template['chainID'] == 'A']
         original = self.atoms.copy()
         original.index = original['chainID'].astype(str) + '_' + original['resSeq'].astype(str) + '_' + original['name']
@@ -433,24 +516,12 @@ class DNA(object):
             self.dihedrals['t0'] = -d - 180
 
     def writePDB(self, pdb_file='clean.pdb'):
-        """ Writes a minimal version of the pdb file needed for openmm """
-        # Compute chain field
-        if type(self.atoms['chainID'].iloc[0]) is not str:
-            chain_ix = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz'
-            self.atoms['chainID'] = [chain_ix[i - 1] for i in self.atoms['chainID']]
-
         # Compute element fields
         element_ix = {'P': 'P', 'S': 'H', 'A': 'N', 'T': 'S', 'C': 'O', 'G': 'C'}  # Elements choosen to keep VMD colors
         self.atoms.loc[:, 'element'] = [element_ix[atomType] for atomType in self.atoms['name']]
-
-        # Write pdb file
-        with open(pdb_file, 'w+') as pdb:
-            for i, atom in self.atoms.iterrows():
-                pdb_line = f'ATOM  {i + 1:>5} {atom["name"]:^4} {atom.resname:<3} {atom.chainID}{atom.resSeq:>4}    {atom.x:>8.3f}{atom.y:>8.3f}{atom.z:>8.3f}' + ' ' * 22 + f'{atom.element:2}' + ' ' * 2
-                assert len(pdb_line) == 80, 'An item in the atom table is longer than expected'
-                pdb.write(pdb_line + '\n')
-        self.pdb_file = pdb_file
-        return pdb_file
+        
+        self.pdb_file = writePDB(self.atoms,pdb_file)
+        return self.pdb_file
 
     @classmethod
     def fromCoarsePDB(cls, pdb_file, dna_type='B_curved', template_from_X3DNA=True, temp_name='temp',
@@ -486,7 +557,7 @@ class DNA(object):
         return self
 
     @staticmethod
-    def CoarseGrain(pdb_table):
+    def CoarseGrain(pdb_table, rna=False):
         """ Selects DNA atoms from a pdb table and returns a table containing only the coarse-grained atoms for 3SPN2"""
         masses = {"H": 1.00794, "C": 12.0107, "N": 14.0067, "O": 15.9994, "P": 30.973762, }
         CG = {"O5\'": 'P', "C5\'": 'S', "C4\'": 'S', "O4\'": 'S', "C3\'": 'S', "O3\'": 'P',
@@ -499,6 +570,8 @@ class DNA(object):
               "H1'": 'S', "H8": 'B', "H61": 'B', "H62": 'B', 'H2': 'B', 'H1': 'B', 'H21': 'B',
               'H22': 'B', 'H3': 'B', 'H71': 'B', 'H72': 'B', 'H73': 'B', 'H6': 'B', 'H41': 'B',
               'H42': 'B', 'H5': 'B', "HO3'": 'P'}
+        if rna:
+            CG.update({"HO2\'": 'S', "O2\'": 'S'})
         cols = ['recname', 'serial', 'name', 'altLoc',
                 'resname', 'chainID', 'resSeq', 'iCode',
                 'x', 'y', 'z', 'occupancy', 'tempFactor',
@@ -506,7 +579,10 @@ class DNA(object):
         temp = pdb_table.copy()
 
         # Select DNA residues
-        temp = temp[temp['resname'].isin(['DA', 'DT', 'DG', 'DC'])]
+        if rna:
+            temp = temp[temp['resname'].isin(['A', 'U', 'G', 'C'])]
+        else:
+            temp = temp[temp['resname'].isin(['DA', 'DT', 'DG', 'DC'])]
 
         # Group the atoms by sugar, phosphate or base
         temp['group'] = temp['name'].replace(CG)
@@ -522,7 +598,7 @@ class DNA(object):
         temp = temp[temp['resname'] != 'remove']
 
         # Calculate center of mass
-        temp['element']=temp['element'].str.strip()
+        temp['element'] = temp['element'].str.strip()
         temp['mass'] = temp.element.replace(masses).astype(float)
         temp[['x', 'y', 'z']] = (temp[['x', 'y', 'z']].T * temp['mass']).T[['x', 'y', 'z']]
         temp = temp[temp['element'] != 'H']  # Exclude hydrogens
@@ -540,13 +616,17 @@ class DNA(object):
         Coarse.loc[mask, 'name'] = Coarse[mask].resname.str[-1]  # takes last letter from the residue name
         Coarse['type'] = Coarse['name']
         # Set element (depends on base)
-        Coarse['element'] = Coarse['name'].replace({'P': 'P', 'S': 'H', 'A': 'N', 'T': 'S', 'G': 'C', 'C': 'O'})
-        # Remove P from the beggining
+        if rna:
+            Coarse['name'] = Coarse['name'].replace({'S', 'Sr'})
+        Coarse['element'] = Coarse['name'].replace({'P': 'P', 'S': 'H', 'Sr': 'D',
+                                                    'A': 'N', 'T': 'S', 'U': 'S', 'G': 'C', 'C': 'O'})
+        # Remove P from the beginning
         drop_list = []
         for chain in Coarse.chainID.unique():
             sel = Coarse[Coarse.chainID == chain]
             drop_list += list(sel[(sel.resSeq == sel.resSeq.min()) & sel['name'].isin(['P'])].index)
         Coarse = Coarse.drop(drop_list)
+
         # Renumber
         Coarse.index = range(len(Coarse))
         Coarse['serial'] = Coarse.index
@@ -627,19 +707,19 @@ class DNA(object):
         return self
 
 
-class System(simtk.openmm.System):
+class System(openmm.System):
     """ Wrapper of openmm system class, adds some openmm simulation attributes"""
 
-    def __init__(self, dna, forcefieldFiles=[f'{__location__}/3SPN2.xml'], periodicBox=None):
+    def __init__(self, dna, forcefieldFiles=[__location__/'3SPN2.xml'], periodicBox=None):
         self.dna = dna
-        self.top = simtk.openmm.app.PDBFile(dna.pdb_file).getTopology()
+        self.top = openmm.app.PDBFile(dna.pdb_file).getTopology()
         if self.top.getUnitCellDimensions() is None:
             x = dna.atoms[['x', 'y', 'z']]
             d = np.round((x.max() - x.min()) * 2 + 5, -1)
             self.top.setUnitCellDimensions(d)
 
-        self.coord = simtk.openmm.app.PDBFile(dna.pdb_file)
-        self.forcefield = simtk.openmm.app.ForceField(*forcefieldFiles)
+        self.coord = openmm.app.PDBFile(dna.pdb_file)
+        self.forcefield = openmm.app.ForceField(*forcefieldFiles)
         self._wrapped_system = self.forcefield.createSystem(self.top)
         self.periodicBox = periodicBox
         if periodicBox is not None:
@@ -660,7 +740,7 @@ class System(simtk.openmm.System):
         openMM usually adds a "CMMotionRemover" force to keep the center of mass of the system from drifting."""
         j = 0
         for i, f in enumerate(self.getForces()):
-            if keepCMMotionRemover and i == 0 and f.__class__ == simtk.openmm.CMMotionRemover:
+            if keepCMMotionRemover and i == 0 and f.__class__ == openmm.CMMotionRemover:
                 # print('Kept ', f.__class__)
                 j += 1
                 continue
@@ -695,9 +775,9 @@ class System(simtk.openmm.System):
 
     def initializeMD(self, temperature=300 * unit.kelvin, platform_name='Reference', damping=2/unit.picosecond, timestep=2*unit.femtoseconds):
         """Starts a simple simulation using the selected system"""
-        self.integrator = simtk.openmm.LangevinIntegrator(temperature, damping, timestep)
-        self.platform = simtk.openmm.Platform.getPlatformByName(platform_name)
-        self.simulation = simtk.openmm.app.Simulation(self.top, self._wrapped_system, self.integrator, self.platform)
+        self.integrator = openmm.LangevinIntegrator(temperature, damping, timestep)
+        self.platform = openmm.Platform.getPlatformByName(platform_name)
+        self.simulation = openmm.app.Simulation(self.top, self._wrapped_system, self.integrator, self.platform)
         self.simulation.context.setPositions(self.coord.positions)
         return self.simulation
 
@@ -795,7 +875,7 @@ class Force(object):
         # return a table with the energy
 
 
-class Bond(Force, simtk.openmm.CustomBondForce):
+class Bond(Force, openmm.CustomBondForce):
     def __init__(self, dna, force_group=6, OpenCLPatch=True):
         self.force_group = force_group
         super().__init__(dna, OpenCLPatch=OpenCLPatch)
@@ -810,7 +890,7 @@ class Bond(Force, simtk.openmm.CustomBondForce):
         return [self.perInteractionParameters, self.GlobalParameters]
 
     def reset(self):
-        bondForce = simtk.openmm.CustomBondForce("Kb2*(r-r0)^2+Kb3*(r-r0)^3+Kb4*(r-r0)^4")
+        bondForce = openmm.CustomBondForce("Kb2*(r-r0)^2+Kb3*(r-r0)^3+Kb4*(r-r0)^4")
         bondForce.addPerBondParameter('r0')
         bondForce.addPerBondParameter('Kb2')
         bondForce.addPerBondParameter('Kb3')
@@ -829,14 +909,14 @@ class Bond(Force, simtk.openmm.CustomBondForce):
             self.force.addBond(int(b['aai']), int(b['aaj']), parameters)
 
 
-class Angle(Force, simtk.openmm.HarmonicAngleForce):
+class Angle(Force, openmm.HarmonicAngleForce):
 
     def __init__(self, dna, force_group=7, OpenCLPatch=True):
         self.force_group = force_group
         super().__init__(dna, OpenCLPatch=OpenCLPatch)
 
     def reset(self):
-        angleForce = simtk.openmm.HarmonicAngleForce()
+        angleForce = openmm.HarmonicAngleForce()
         angleForce.setUsesPeriodicBoundaryConditions(self.periodic)
         angleForce.setForceGroup(self.force_group)
         self.force = angleForce
@@ -848,13 +928,13 @@ class Angle(Force, simtk.openmm.HarmonicAngleForce):
             self.force.addAngle(int(a['aai']), int(a['aaj']), int(a['aak']), *parameters)
 
 
-class Stacking(Force, simtk.openmm.CustomCompoundBondForce):
+class Stacking(Force, openmm.CustomCompoundBondForce):
     def __init__(self, dna, force_group=8, OpenCLPatch=True):
         self.force_group = force_group
         super().__init__(dna, OpenCLPatch=OpenCLPatch)
 
     def reset(self):
-        stackingForce = simtk.openmm.CustomCompoundBondForce(3, """energy;
+        stackingForce = openmm.CustomCompoundBondForce(3, """energy;
                         energy=rep+f2*attr;
                         rep=epsilon*(1-exp(-alpha*(dr)))^2*step(-dr);
                         attr=epsilon*(1-exp(-alpha*(dr)))^2*step(dr)-epsilon;
@@ -884,13 +964,13 @@ class Stacking(Force, simtk.openmm.CustomCompoundBondForce):
             self.force.addBond([a['aai'], a['aaj'], a['aak']], parameters)
 
 
-class Dihedral(Force, simtk.openmm.CustomTorsionForce):
+class Dihedral(Force, openmm.CustomTorsionForce):
     def __init__(self, dna, force_group=9, OpenCLPatch=True):
         self.force_group = force_group
         super().__init__(dna, OpenCLPatch=OpenCLPatch)
 
     def reset(self):
-        dihedralForce = simtk.openmm.CustomTorsionForce("""energy;
+        dihedralForce = openmm.CustomTorsionForce("""energy;
                         energy = K_periodic*(1-cs)-K_gaussian*exp(-dt_periodic^2/2/sigma^2);
                         cs = cos(dt);
                         dt_periodic = dt-floor((dt+pi)/(2*pi))*(2*pi);
@@ -915,14 +995,14 @@ class Dihedral(Force, simtk.openmm.CustomTorsionForce):
             self.force.addTorsion(*particles, parameters)
 
 
-class BasePair(Force, simtk.openmm.CustomHbondForce):
+class BasePair(Force, openmm.CustomHbondForce):
     def __init__(self, dna, force_group=10, OpenCLPatch=True):
         self.force_group = force_group
         super().__init__(dna, OpenCLPatch=OpenCLPatch)
 
     def reset(self):
         def basePairForce():
-            pairForce = simtk.openmm.CustomHbondForce('''energy;
+            pairForce = openmm.CustomHbondForce('''energy;
                         energy=rep+1/2*(1+cos(dphi))*fdt1*fdt2*attr;
                         rep  = epsilon*(1-exp(-alpha*dr))^2*(1-step(dr));
                         attr = epsilon*(1-exp(-alpha*dr))^2*step(dr)-epsilon;
@@ -995,12 +1075,12 @@ class BasePair(Force, simtk.openmm.CustomHbondForce):
 
             # Define parameters
             parameters = [pair.torsion * _af,
-                          pair.sigma * _df,
+                          pair.sigma,
                           pair.t1 * _af,
                           pair.t2 * _af,
                           pair.rang,
-                          pair.epsilon * _ef,
-                          pair.alpha / _df]
+                          pair.epsilon,
+                          pair.alpha]
 
             # Add donors and acceptors
             # Here I am including the same atom twice,
@@ -1037,7 +1117,7 @@ class CrossStacking(Force):
 
     def reset(self):
         def crossStackingForce(parametersOnDonor=False):
-            crossForce = simtk.openmm.CustomHbondForce(f'''energy;
+            crossForce = openmm.CustomHbondForce(f'''energy;
                          energy   = fdt3*fdtCS*attr/2;
                          attr     = epsilon*(1-exp(-alpha*dr))^2*step(dr)-epsilon;
                          fdt3     = max(f1*pair0t3,pair1t3);
@@ -1132,9 +1212,9 @@ class CrossStacking(Force):
                           param['T0CS_2'] * _af,
                           param['rng_cs2'],
                           param['rng_bp'],
-                          param['eps_cs2'] * _ef,
-                          param['alpha_cs2'] / _df,
-                          param['Sigma_2'] * _df]
+                          param['eps_cs2'],
+                          param['alpha_cs2'],
+                          param['Sigma_2']]
             c1.addDonor(d1, d2, d3)
             c2.addAcceptor(d1, d2, d3, parameters)
             # print("Donor", d1t, d1, d2, d3)
@@ -1152,9 +1232,9 @@ class CrossStacking(Force):
                           param['T0CS_1'] * _af,
                           param['rng_cs1'],
                           param['rng_bp'],
-                          param['eps_cs1'] * _ef,
-                          param['alpha_cs1'] / _df,
-                          param['Sigma_1'] * _df]
+                          param['eps_cs1'],
+                          param['alpha_cs1'],
+                          param['Sigma_1']]
             c1.addAcceptor(a1, a2, a3, parameters)
             c2.addDonor(a1, a2, a3)
             # print("Aceptor", a1t, a1, a2, a3)
@@ -1192,33 +1272,49 @@ class CrossStacking(Force):
             assert fg == c2.getForceGroup()
         return fg
 
-
 def addNonBondedExclusions(dna, force, OpenCLPatch=True):
     is_dna = dna.atoms['resname'].isin(_dnaResidues)
     atoms = dna.atoms.copy()
-    selection = atoms[is_dna]
-    for (i, atom_a), (j, atom_b) in itertools.combinations(selection.iterrows(), r=2):
-        if j < i:
-            i, j = j, i
-            atom_a, atom_b = atom_b, atom_a
-        # Neighboring residues
-        if atom_a.chainID == atom_b.chainID and (abs(atom_a.resSeq - atom_b.resSeq) <= 1):
-            force.addExclusion(i, j)
-            # print(i, j)
-        # Base-pair residues
-        elif OpenCLPatch and (atom_a['name'] in _complement.keys()) and (atom_b['name'] in _complement.keys()) and (
-                atom_a['name'] == _complement[atom_b['name']]):
-            force.addExclusion(i, j)
-            # print(i, j)
+    selection = atoms[is_dna].sort_index()
+    selection['index'] = selection.index
+    selection['neighbor'] = selection['chainID'].astype(str) + '_' + (selection['resSeq'] - 1).astype(str)
+    selection.index = selection['chainID'].astype(str) + '_' + (selection['resSeq']).astype(str)
+
+    exclusions = []
+    for i, neighbor_res, self_res in zip(selection['index'], selection['neighbor'], selection.index):
+        # Add exclusions for the same residue
+        for j in selection.loc[self_res, 'index']:
+            if i > j:
+                exclusions += [(j, i)]
+        # Add exclusions with the neighboring residue on the same chain
+        try:
+            for j in selection.loc[neighbor_res, 'index']:
+                exclusions += [(j, i)]
+        except KeyError:
+            continue
+
+    exclusions_bp = []
+    if OpenCLPatch:
+        # Add basepair exclusions
+        for key in _complement:
+            selection_N = atoms[is_dna & (atoms['name'] == key)]
+            selection_C = atoms[is_dna & (atoms['name'] == _complement[key])]
+            for i, j in itertools.product(selection_N.index, selection_C.index):
+                if i > j:
+                    exclusions_bp += [(j, i)]
+
+    exclusions = list(set(exclusions+exclusions_bp))
+    for i, j in exclusions:
+        force.addExclusion(i, j)
 
 
-class Exclusion(Force, simtk.openmm.CustomNonbondedForce):
+class Exclusion(Force, openmm.CustomNonbondedForce):
     def __init__(self, dna, force_group = 12, OpenCLPatch=True):
         self.force_group = force_group
         super().__init__(dna, OpenCLPatch=OpenCLPatch)
 
     def reset(self):
-        exclusionForce = simtk.openmm.CustomNonbondedForce("""energy;
+        exclusionForce = openmm.CustomNonbondedForce("""energy;
                          energy=(epsilon*((sigma/r)^12-2*(sigma/r)^6)+epsilon)*step(sigma-r);
                          sigma=0.5*(sigma1+sigma2);
                          epsilon=sqrt(epsilon1*epsilon2)""")
@@ -1238,7 +1334,7 @@ class Exclusion(Force, simtk.openmm.CustomNonbondedForce):
         particle_definition.index = particle_definition.name
 
         # Reduces or increases the cutoff to the maximum particle radius
-        self.force.setCutoffDistance(particle_definition.radius.max() * _df)
+        self.force.setCutoffDistance(particle_definition.radius.max())
 
         # Select only dna atoms
         is_dna = self.dna.atoms['resname'].isin(_dnaResidues)
@@ -1247,8 +1343,8 @@ class Exclusion(Force, simtk.openmm.CustomNonbondedForce):
         for i, atom in atoms.iterrows():
             if atom.is_dna:
                 param = particle_definition.loc[atom['name']]
-                parameters = [param.epsilon * _ef,
-                              param.radius * _df]
+                parameters = [param.epsilon,
+                              param.radius]
             else:
                 parameters = [0, .1]  # Null energy and some radius)
             # print(i, parameters)
@@ -1258,7 +1354,7 @@ class Exclusion(Force, simtk.openmm.CustomNonbondedForce):
         addNonBondedExclusions(self.dna, self.force)
 
 
-class Electrostatics(Force, simtk.openmm.CustomNonbondedForce):
+class Electrostatics(Force, openmm.CustomNonbondedForce):
     def __init__(self, dna, force_group=13, temperature=300*unit.kelvin, salt_concentration=100*unit.millimolar, OpenCLPatch=True):
         self.force_group = force_group
         self.T = temperature
@@ -1284,7 +1380,7 @@ class Electrostatics(Force, simtk.openmm.CustomNonbondedForce):
         denominator = denominator.in_units_of(unit.kilocalorie_per_mole**-1 * unit.nanometer**-1)
         #print(ldby, denominator)
 
-        electrostaticForce = simtk.openmm.CustomNonbondedForce("""energy;
+        electrostaticForce = openmm.CustomNonbondedForce("""energy;
                                                                 energy=q1*q2*exp(-r/dh_length)/denominator/r;""")
         electrostaticForce.addPerParticleParameter('q')
         electrostaticForce.addGlobalParameter('dh_length', ldby)
@@ -1335,13 +1431,13 @@ class ExclusionProteinDNA(ProteinDNAForce):
         super().__init__(dna, protein)
 
     def reset(self):
-        k = self.k
-        exclusionForce = simtk.openmm.CustomNonbondedForce(f"""{k}*energy;
+        exclusionForce = openmm.CustomNonbondedForce(f"""k_exclusion_protein_DNA*energy;
                          energy=(4*epsilon*((sigma/r)^12-(sigma/r)^6)-offset)*step(cutoff-r);
                          offset=4*epsilon*((sigma/cutoff)^12-(sigma/cutoff)^6);
                          sigma=0.5*(sigma1+sigma2); 
                          epsilon=sqrt(epsilon1*epsilon2);
                          cutoff=sqrt(cutoff1*cutoff2)""")
+        exclusionForce.addGlobalParameter('k_exclusion_protein_DNA', self.k)
         exclusionForce.addPerParticleParameter('epsilon')
         exclusionForce.addPerParticleParameter('sigma')
         exclusionForce.addPerParticleParameter('cutoff')
@@ -1379,15 +1475,15 @@ class ExclusionProteinDNA(ProteinDNAForce):
         for i, atom in atoms.iterrows():
             if atom.is_dna:
                 param = particle_definition.loc['DNA' + atom['name']]
-                parameters = [param.epsilon * _ef,
-                              param.radius * _df,
-                              param.cutoff * _df]
+                parameters = [param.epsilon,
+                              param.radius,
+                              param.cutoff]
                 DNA_list += [i]
             elif atom.is_protein:
                 param = particle_definition.loc['Protein' + atom['name']]
-                parameters = [param.epsilon * _ef,
-                              param.radius * _df,
-                              param.cutoff * _df]
+                parameters = [param.epsilon,
+                              param.radius,
+                              param.cutoff]
                 protein_list += [i]
             else:
                 print(f'Residue {i} not included in protein-DNA interactions')
@@ -1421,7 +1517,7 @@ class ElectrostaticsProteinDNA(ProteinDNAForce):
         denominator = denominator.in_units_of(unit.kilocalorie_per_mole**-1 * unit.nanometer**-1)
         #print(ldby, denominator)
         k = self.k
-        electrostaticForce = simtk.openmm.CustomNonbondedForce(f"""k_electro_protein_DNA*energy;
+        electrostaticForce = openmm.CustomNonbondedForce(f"""k_electro_protein_DNA*energy;
                              energy=q1*q2*exp(-r/inter_dh_length)/inter_denominator/r;""")
         electrostaticForce.addPerParticleParameter('q')
         electrostaticForce.addGlobalParameter('k_electro_protein_DNA', k)
@@ -1488,6 +1584,7 @@ class ElectrostaticsProteinDNA(ProteinDNAForce):
         # addExclusions
         addNonBondedExclusions(self.dna, self.force)
 
+
 class AMHgoProteinDNA(ProteinDNAForce):
     """ Protein-DNA amhgo potential"""
     def __init__(self, dna, protein, chain_protein='A', chain_DNA='B', k_amhgo_PD=1*unit.kilocalorie_per_mole, sigma_sq=0.05*unit.nanometers**2, aaweight=False, globalct=True, cutoff=1.8, force_group=16):
@@ -1505,9 +1602,9 @@ class AMHgoProteinDNA(ProteinDNAForce):
         cutoff = self.cutoff
         k_3spn2 = self.k_3spn2
         if self.globalct:
-                amhgoForce = simtk.openmm.CustomBondForce(f"-k_amhgo_PD*gamma_ij*exp(-(r-r_ijN)^2/(2*sigma_sq))*step({cutoff}-r)")
+                amhgoForce = openmm.CustomBondForce(f"-k_amhgo_PD*gamma_ij*exp(-(r-r_ijN)^2/(2*sigma_sq))*step({cutoff}-r)")
         else:
-                amhgoForce = simtk.openmm.CustomBondForce(f"-k_amhgo_PD*gamma_ij*exp(-(r-r_ijN)^2/(2*sigma_sq))*step(r_ijN+{cutoff}-r)")
+                amhgoForce = openmm.CustomBondForce(f"-k_amhgo_PD*gamma_ij*exp(-(r-r_ijN)^2/(2*sigma_sq))*step(r_ijN+{cutoff}-r)")
         amhgoForce.addGlobalParameter("k_amhgo_PD", k_3spn2*self.k_amhgo_PD)
         amhgoForce.addGlobalParameter("sigma_sq", self.sigma_sq)
         amhgoForce.addPerBondParameter("gamma_ij")
@@ -1523,7 +1620,10 @@ class AMHgoProteinDNA(ProteinDNAForce):
 
         contact_list = np.loadtxt("contact_protein_DNA.dat")
         for i in range(len(contact_list)):
-            gamma_ij = contact_list[i][3] if self.aaweight else 1.0
+            if self.aaweight:
+                gamma_ij = contact_list[i][3]
+            else:
+                gamma_ij = 1.0
             if (self.chain_protein, int(contact_list[i][0]), 'CB') in atoms.index:
                  CB_protein = atoms[(atoms['chainID'] == self.chain_protein) & (atoms['resSeq'] == int(contact_list[i][0])) & (atoms['name'] == 'CB') & atoms['resname'].isin(_proteinResidues)].copy()
             else:
@@ -1531,10 +1631,10 @@ class AMHgoProteinDNA(ProteinDNAForce):
             base_DNA = atoms[(atoms['chainID'] == self.chain_DNA) & (atoms['resSeq'] == int(contact_list[i][1])) & (atoms['name'].isin(['A', 'T', 'G', 'C'])) & atoms['resname'].isin(_dnaResidues)].copy()
             r_ijN = contact_list[i][2]/10.0*unit.nanometers
             self.force.addBond(int(CB_protein['index'].values[0]), int(base_DNA['index'].values[0]), [gamma_ij, r_ijN])
-            #print(int(CB_protein['index'].values[0]), int(base_DNA['index'].values[0]), [gamma_ij, r_ijN])
+            print(int(CB_protein['index'].values[0]), int(base_DNA['index'].values[0]), [gamma_ij, r_ijN])
 
 
-# class AMHgoProteinDNA(ProteinDNAForce):
+#class AMHgoProteinDNA(ProteinDNAForce):
 #    """ Protein-DNA amhgo potential (Xinyu)"""
 #    def __init__(self, dna, protein, chain_protein='A', chain_DNA='B', k_amhgo_PD=1*unit.kilocalorie_per_mole,
 #                 sigma_sq=0.05*unit.nanometers**2, aaweight=False, cutoff=1.8, force_group=16):
@@ -1549,7 +1649,7 @@ class AMHgoProteinDNA(ProteinDNAForce):
 #
 #    def reset(self):
 #        cutoff = self.cutoff
-#        amhgoForce = simtk.openmm.CustomBondForce(f"-k_amhgo_PD*gamma_ij*exp(-(r-r_ijN)^2/(2*sigma_sq))*step({cutoff}-r)")
+#        amhgoForce = openmm.CustomBondForce(f"-k_amhgo_PD*gamma_ij*exp(-(r-r_ijN)^2/(2*sigma_sq))*step({cutoff}-r)")
 #        amhgoForce.addGlobalParameter("k_amhgo_PD", self.k_amhgo_PD)
 #        amhgoForce.addGlobalParameter("sigma_sq", self.sigma_sq)
 #        amhgoForce.addPerBondParameter("gamma_ij")
@@ -1573,8 +1673,7 @@ class AMHgoProteinDNA(ProteinDNAForce):
 #            else:
 #                 CB_protein = atoms[(atoms['chainID'] == self.chain_protein) & (atoms['resSeq'] == int(contact_list[i][0])) &
 #                                    (atoms['name'] == 'CA') & atoms['resname'].isin(_proteinResidues)].copy()
-#            base_DNA = atoms[(atoms['chainID'] == self.chain_DNA) & (atoms['resSeq'] == int(contact_list[i][1])) &
-#                             (atoms['name'].isin(['A', 'T', 'G', 'C'])) & atoms['resname'].isin(_dnaResidues)].copy()
+#            base_DNA = atoms[(atoms['chainID'] == self.chain_DNA) & (atoms['resSeq'] == int(contact_list[i][1])) & (atoms['name'].isin(['A', 'T', 'G', 'C'])) & atoms['resname'].isin(_dnaResidues)].copy()
 #            r_ijN = contact_list[i][2]/10.0*unit.nanometers
 #            self.force.addBond(int(CB_protein['index'].values[0]), int(base_DNA['index'].values[0]), [gamma_ij, r_ijN])
 #            print(int(CB_protein['index'].values[0]), int(base_DNA['index'].values[0]), [gamma_ij, r_ijN])
@@ -1593,7 +1692,7 @@ class StringProteinDNA(ProteinDNAForce):
     def reset(self):
         r0=self.r0
         k_string_PD=self.k_string_PD
-        stringForce = simtk.openmm.CustomCentroidBondForce(2, f"0.5*{k_string_PD}*(distance(g1,g2)-{r0})^2")
+        stringForce = openmm.CustomCentroidBondForce(2, f"0.5*{k_string_PD}*(distance(g1,g2)-{r0})^2")
         self.force = stringForce
         print("String_PD bias on: r0, k_string = ", r0, k_string_PD)
 
@@ -1624,7 +1723,7 @@ class String_length_ProteinDNA(ProteinDNAForce):
         super().__init__(dna, protein)
 
     def reset(self):
-        length = simtk.openmm.CustomCentroidBondForce(2, "distance(g1,g2)")
+        length = openmm.CustomCentroidBondForce(2, "distance(g1,g2)")
         length.setForceGroup(self.force_group)
         self.force = length
 
@@ -1656,77 +1755,6 @@ forces = dict(Bond=Bond,
 protein_dna_forces=dict(ExclusionProteinDNA=ExclusionProteinDNA,
                         ElectrostaticsProteinDNA=ElectrostaticsProteinDNA)
 
-
-# Unit testing
-def test_DNA_from_pdb():
-    """ Test correct DNA initialization from PDB"""
-    mol = DNA.fromPDB("Tests/1svc/1svc.pdb", template_from_X3DNA=False)
-
-
-def test_DNA_from_gro():
-    """ Test correct DNA initialization from gromacs files"""
-    pass
-
-
-def test_DNA_from_seq():
-    """ Test correct DNA initialization from sequence files"""
-    return True #Needs X3DNA
-    seq = 'ATACAAAGGTGCGAGGTTTCTATGCTCCCACG'
-    dna = DNA.fromSequence(seq, dna_type='B_curved')
-
-    # Compute the topology for the DNA structure.
-    # Since the dna was generated from the sequence using X3DNA,
-    # it is not necesary to recompute the geometry.
-
-    dna.computeTopology(template_from_X3DNA=False)
-
-    # Create the system.
-    # To set periodic boundary conditions (periodicBox=[50,50,50]).
-    # The periodic box size is in nanometers.
-    dna.periodic = False
-    s = System(dna, periodicBox=None)
-
-    # Add 3SPN2 forces
-    s.add3SPN2forces(verbose=True)
-
-    import simtk.openmm
-    import simtk.openmm.app
-    import simtk.unit
-    import sys
-    import numpy as np
-
-    # Initialize Molecular Dynamics simulations
-    s.initializeMD(temperature=300 * simtk.unit.kelvin, platform_name='OpenCL')
-    simulation = s.simulation
-
-    # Set initial positions
-    simulation.context.setPositions(s.coord.getPositions())
-
-    energy_unit = simtk.openmm.unit.kilojoule_per_mole
-    # Total energy
-    state = simulation.context.getState(getEnergy=True)
-    energy = state.getPotentialEnergy().value_in_unit(energy_unit)
-    print('TotalEnergy', round(energy, 6), energy_unit.get_symbol())
-
-    # Detailed energy
-    energies = {}
-    for force_name, force in s.forces.items():
-        group = force.getForceGroup()
-        state = simulation.context.getState(getEnergy=True, groups=2 ** group)
-        energies[force_name] = state.getPotentialEnergy().value_in_unit(energy_unit)
-
-    for force_name in s.forces.keys():
-        print(force_name, round(energies[force_name], 6), energy_unit.get_symbol())
-
-
-def test_DNA_from_xyz():
-    """Tests the correct parsing from an xyz file"""
-    mol = DNA.fromXYZ('Tests/adna/in00_conf.xyz', template_from_X3DNA=False)
-    assert mol.atoms.at[8, 'name'] == 'P'
-    assert round(mol.atoms.at[188, 'y'], 6) == -8.779343
-
-
-# Functional testing
 
 def parse_xyz(filename=''):
     columns = ['N', 'timestep', 'id', 'name', 'x', 'y', 'z']
@@ -1780,125 +1808,6 @@ def parse_log(filename=''):
             log_data[i] = log_data[i].astype(int)
     return log_data
 
-
-def test_parse_xyz():
-    """Tests the example trajectory parsing"""
-    xyz_data = parse_xyz('Tests/adna/traj.xyz')
-    assert xyz_data.at[1, 'name'] == 7
-    assert xyz_data.at[1, 'x'] == 4.34621
-
-
-def test_parse_log():
-    """Tests the example log parsing"""
-    log_data = parse_log('Tests/adna/sim.log')
-    assert log_data.at[1, 'Step'] == 2000
-    assert log_data.at[1, 'eexcl'] == 0.45734636
-
-
-class TestEnergies:
-    """Tests that the energies are the same as the example outputs from lammps"""
-
-    def _test_energy(self,
-                     log_energy='E_bond',
-                     log_file='Tests/adna/sim.log',
-                     traj_file='Tests/adna/traj.xyz',
-                     force='Bond', periodic_size=94.2,
-                     platform_name='Reference', dna=None, system=None):
-        self.dna = dna
-        self.system = system
-        self.system.clearForces()
-        self.system.setDefaultPeriodicBoxVectors(*np.diag([2 * periodic_size / 10] * 3))
-
-        log = parse_log(log_file)
-
-        self.system.clearForces()
-        f = forces[force]
-        tempforce = f(self.dna)
-        try:
-            tempforce.addForce(self.system)
-        except AttributeError:
-            self.system.addForce(tempforce)
-        energies = self.system.recomputeEnergy(traj_file, platform_name=platform_name)
-        d = (energies / _ef - log[log_energy])
-        diff = np.sqrt((d ** 2).sum() / len(energies))
-        print(f'The difference in the energy term {log_energy} is {diff} Kcal/mol')
-        print(f'The DNA type of the system is {self.dna.DNAtype}')
-        data = np.array([energies / _ef, np.array(log[log_energy]), np.array(d)])
-        results = pandas.DataFrame(data.T, columns=['Openmm energy', 'Lammps energy', 'Difference'])
-        # print(data)
-        print(pandas.DataFrame(data.T, columns=['Openmm energy', 'Lammps energy', 'Difference']))
-        # The maximum error seems to be bonds in curved BDNA (0.002)
-        assert diff < 2E-3, diff
-        assert len(results.dropna()) == len(results), results
-
-    def test_energies(self):
-        test_sets = pandas.read_csv('Tests/test_cases.csv', comment='#')
-        for i, tests in test_sets.groupby(['Folder', 'DNA type']):
-            folder = i[0]
-            dna_type = i[1]
-            self.dna = DNA.fromXYZ(f'{folder}/in00_conf.xyz', dna_type, template_from_X3DNA=False)
-            self.system = System(self.dna)
-            for j, test in tests.iterrows():
-                print(j)
-                yield self._test_energy, test['Energy term'], f'{folder}/{test.Log}', f'{folder}/{test.Trajectory}', \
-                      test['Name'], test['periodic size'], test['Platform'], self.dna, self.system
-
-    def _test_force(self,
-                    log_energy='E_bond',
-                    log_file='Tests/adna/sim.log',
-                    traj_file='Tests/adna/traj.xyz',
-                    force='Bond', periodic_size=94.2,
-                    platform_name='Reference', dna=None, system=None):
-        self.dna = dna
-        self.system = system
-        self.system.clearForces()
-        self.system.setDefaultPeriodicBoxVectors(*np.diag([2 * periodic_size / 10] * 3))
-        log = parse_log(log_file)
-        self.system.clearForces()
-        f = forces[force]
-        tempforce = f(self.dna)
-        try:
-            tempforce.addForce(self.system)
-        except AttributeError:
-            self.system.addForce(tempforce)
-        temperature = 300 * simtk.openmm.unit.kelvin
-        integrator = simtk.openmm.LangevinIntegrator(temperature, 1 / simtk.openmm.unit.picosecond,
-                                                     2 * simtk.openmm.unit.femtoseconds)
-        platform = simtk.openmm.Platform.getPlatformByName(platform_name)
-        simulation = simtk.openmm.app.Simulation(self.system.top, self.system, integrator, platform)
-        simulation.context.setPositions(self.system.coord.getPositions())
-        energy_unit = simtk.openmm.unit.kilojoule_per_mole
-        nan_force_particles = 0
-        for i in range(10):
-            state = simulation.context.getState(getForces=True)
-            ff = state.getForces()
-            sf = (np.array(ff) ** 2).sum(axis=1) ** .5
-            for j, f in enumerate(sf):
-                if np.isnan(f.value_in_unit(unit.kilojoule_per_mole / unit.nanometer)):
-                    print(f"Particle {j + 1}/{len(sf)} has force {f} at step {i}")
-                    nan_force_particles += 1
-            simulation.step(1)
-        assert nan_force_particles == 0, "At least one particle has undefined force"
-
-    def test_forces(self):
-        test_sets = pandas.read_csv('Tests/test_cases.csv', comment='#')
-        for i, tests in test_sets.groupby(['Folder', 'DNA type']):
-            folder = i[0]
-            dna_type = i[1]
-            self.dna = DNA.fromXYZ(f'{folder}/in00_conf.xyz', dna_type, template_from_X3DNA=False)
-            self.system = System(self.dna)
-            for j, test in tests.iterrows():
-                print(j)
-                yield self._test_force, test['Energy term'], f'{folder}/{test.Log}', f'{folder}/{test.Trajectory}', \
-                      test['Name'], test['periodic size'], test['Platform'], self.dna, self.system
-
-    def _test_energies_slow(self):
-        test_sets = pandas.read_csv('Tests/test_cases.csv', comment='#')
-        for i, test in test_sets.iterrows():
-            dna_type = test['DNA type']
-            folder = test['Folder']
-            yield self._test_energy, test['Energy term'], f'{folder}/{test.Log}', f'{folder}/{test.Trajectory}', \
-                  test['Name'], folder, dna_type, test['periodic size'], test['Platform']
 
 # Some typical errors
 class BaseError(Exception):

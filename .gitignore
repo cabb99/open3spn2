@@ -119,3 +119,10 @@ dmypy.json
 
 #Scratch files
 *Scratch.ipynb
+
+#IDE
+.vscode
+.idea
+
+#Benchmark tests
+Tests/Benchmark

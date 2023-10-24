@@ -1,0 +1,56 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - dev
+      - main
+  pull_request:
+    branches:
+      - dev
+      - main
+
+jobs:
+  test:
+
+    runs-on: ubuntu-latest
+
+    strategy:
+      matrix:
+        python-version: ["3.11"]  # Note: Make sure all dependencies are compatible with this Python version
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Conda
+      uses: conda-incubator/setup-miniconda@v2
+      with:
+        miniconda-version: "latest"
+        channels: conda-forge,defaults
+
+    - name: Create and activate Conda environment
+      shell: bash -l {0}
+      run: |
+        conda env create -f environment.yml
+        
+
+    - name: Install package
+      shell: bash -l {0}
+      run: |
+        conda activate open3spn2
+        pip install -e .
+
+    - name: Run tests with pytest
+      shell: bash -l {0}
+      run: |
+        conda activate open3spn2
+        pytest --skip-platform=opencl Tests/
+
+    - name: Slack Notification (on failure)
+      if: failure()
+      uses: act10ns/slack@v2
+      with:
+        status: ${{ job.status }}
+        steps: ${{ toJson(steps) }}
+      env:
+        SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
