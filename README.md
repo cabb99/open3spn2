@@ -1,6 +1,6 @@
-[![Actions Status](https://github.com/cabb99/open3spn2/workflows/build/badge.svg)](https://github.com/cabb99/open3spn2/actions)
+[![Actions Status](https://github.com/cabb99/open3spn2/workflows/CI/badge.svg)](https://github.com/cabb99/open3spn2/actions)
 [![Documentation Status](https://readthedocs.org/projects/open3spn2/badge/?version=latest)](https://open3spn2.readthedocs.io/en/latest/?badge=latest)
-[![Anaconda-Server Badge](https://anaconda.org/wolynes-lab/open3spn2/badges/installer/conda.svg)](https://conda.anaconda.org/wolynes-lab)
+[![Anaconda-Server Badge](https://anaconda.org/wolynes-lab/open3spn2/badges/version.svg)](https://conda.anaconda.org/wolynes-lab/open3spn2)
 
 # Open-3SPN2
 A Implementation of the 3SPN.2 and 3SPN.2C coarse-grained molecular model of DNA in OpenMM.
