@@ -2,7 +2,9 @@ import numpy as np
 
 import openmm
 import openmm.unit as unit
+import pandas
 from .template import ProteinDNAForce
+from .dna import addNonBondedExclusions
 _af = 1 * unit.degree / unit.radian  # angle scaling factor
 _dnaResidues = ['DA', 'DC', 'DT', 'DG']
 _proteinResidues = ['IPR', 'IGL', 'NGP']
