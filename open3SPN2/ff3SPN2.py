@@ -164,7 +164,7 @@ class DNA(object):
             new_orien=np.dot(t.full_rotation.T,new_orien)
             
             xyz1 = np.dot(xyz1,new_orien)+new_pos
-            #xyz2 = np.dot(xyz2,new_orien)+new_pos
+            xyz2 = np.dot(xyz2,new_orien)+new_pos
             
             b1[['x','y','z']] = xyz1
             b2[['x','y','z']] = xyz2
