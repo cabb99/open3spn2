@@ -1,4 +1,6 @@
-from open3SPN2 import DNA, System, parse_log, forces
+from open3SPN2 import DNA, System, forces
+from open3SPN2.parser.xyz import parse_xyz
+from open3SPN2.parser.log import parse_log
 import pandas
 import numpy as np
 import openmm.app
