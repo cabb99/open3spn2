@@ -65,6 +65,9 @@ class DNA(object):
         self.pair_definition = self.config['Base Pairs']
         self.cross_definition = self.config['Cross Stackings']
 
+    def to_pdb(self, pdb_file):
+        writePDB(self.atoms,pdb_file)
+
     def getSequences(self):
         """ Returns the DNA sequence as a Pandas Series. The index of the Series is (Chain, resid)"""
         dna_data = self.atoms[self.atoms.resname.isin(_dnaResidues)].copy()
@@ -99,36 +102,6 @@ class DNA(object):
             data += [pandas.concat([pandas.Series([f'{s}-{_complement[s]}'], index=['Sequence']), pair_s, step_s])]
             _s = s
         data = pandas.concat(data, axis=1).T
-        # try:
-        #     location_x3dna = os.environ["X3DNA"]
-        # except KeyError as ex:
-        #     raise X3DNAnotFound from ex
-
-        # with open(f'{temp_name}_parameters.par', 'w+') as par:
-        #     par.write(f' {len(data)} # Number of base pairs\n')
-        #     par.write(f' 0 # local base-pair & step parameters\n')
-        #     par.write('#')
-        #     par.write(data.to_csv(sep=' ', index=False))
-
-        # # Attempting to call rebuild multiple times
-        # # This function fails sometimes when called by multiple because a file with the same name is created
-        # attempt = 0
-        # max_attempts = 10
-        # while attempt < max_attempts:
-        #     try:
-        #         subprocess.check_output([f'{location_x3dna}/bin/x3dna_utils',
-        #                                  'cp_std', 'BDNA'])
-        #         subprocess.check_output([f'{location_x3dna}/bin/rebuild',
-        #                                  '-atomic', f'{temp_name}_parameters.par',
-        #                                  f'{temp_name}_template.pdb'])
-        #         break
-        #     except subprocess.CalledProcessError as e:
-        #         attempt += 1
-        #         if attempt == max_attempts:
-        #             print(f"subprocess.CalledProcessError failed {max_attempts} times {e.args[0]}: {e.args[1]}")
-        # template_dna = self.fromPDB(f'{temp_name}_template.pdb', output_pdb=f'{temp_name}_temp.pdb', compute_topology=False)
-        # template = template_dna.atoms.copy()
-
         new_orien = np.eye(3)
         new_pos = np.zeros(3)
 

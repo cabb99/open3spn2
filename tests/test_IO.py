@@ -104,3 +104,17 @@ def test_transform_known():
     np.testing.assert_almost_equal(transform.half_rotation, expected_half_rotation, decimal=6)
     np.testing.assert_almost_equal(transform.full_displacement, expected_full_displacement, decimal=6)
     np.testing.assert_almost_equal(transform.half_displacement, expected_half_displacement, decimal=6)
+
+def test_DNA_to_pdb(tmp_path):
+    pdb_file_path = tmp_path / "test.pdb"
+    assert not pdb_file_path.exists()
+
+    dna = DNA.fromSequence("ACTG")
+    dna.to_pdb(pdb_file_path)
+    assert pdb_file_path.exists()
+
+    with open(pdb_file_path, 'r') as file:
+        contents = file.read()
+        assert "ATOM      1  A   DA  A   1      -0.440   2.425   0.012  0.00  0.00          N   " in contents
+        assert "ATOM     12  C   DC  B   1       3.949   0.192   9.897  0.00  0.00          O   " in contents
+        assert "ATOM     22  S   DT  B   4      -2.848  -6.597   0.978  0.00  0.00          H   " in contents
