@@ -170,7 +170,7 @@ class BasePair(DNAForce, openmm.CustomHbondForce):
         basePairForces = {}
         pair_definition = self.dna.pair_definition[self.dna.pair_definition['DNA'] == self.dna.DNAtype]
         for i, pair in pair_definition.iterrows():
-            basePairForces.update({i: basePairForce()})
+            basePairForces[i] = basePairForce()
         self.forces = basePairForces
 
     def defineInteraction(self):
@@ -224,8 +224,8 @@ class BasePair(DNAForce, openmm.CustomHbondForce):
                 self.forces[i].addAcceptor(a1, a2, -1)
                 #print(a1, a2, a2)
             # Exclude interactions
-            D1['donor_id'] = [i for i in range(len(D1))]
-            A1['aceptor_id'] = [i for i in range(len(A1))]
+            D1['donor_id'] = list(range(len(D1)))
+            A1['aceptor_id'] = list(range(len(A1)))
 
             for (_i, atom_a), (_j, atom_b) in itertools.product(D1.iterrows(), A1.iterrows()):
                 # Neighboring residues
@@ -249,7 +249,8 @@ class CrossStacking(DNAForce):
 
     def reset(self):
         def crossStackingForce(parametersOnDonor=False):
-            crossForce = openmm.CustomHbondForce(f'''energy;
+            crossForce = openmm.CustomHbondForce(
+                '''energy;
                          energy   = fdt3*fdtCS*attr/2;
                          attr     = epsilon*(1-exp(-alpha*dr))^2*step(dr)-epsilon;
                          fdt3     = max(f1*pair0t3,pair1t3);
@@ -269,7 +270,8 @@ class CrossStacking(DNAForce):
                          cost3    = sin(t1)*sin(t2)*cos(phi)-cos(t1)*cos(t2);
                          t1       = angle(d2,d1,a1);
                          t2       = angle(d1,a1,a2);
-                         phi      = dihedral(d2,d1,a1,a2);''')
+                         phi      = dihedral(d2,d1,a1,a2);'''
+            )
             if self.periodic:
                 crossForce.setNonbondedMethod(crossForce.CutoffPeriodic)
             else:
@@ -287,7 +289,7 @@ class CrossStacking(DNAForce):
 
         crossStackingForces = {}
         for base in ['A', 'T', 'G', 'C']:
-            crossStackingForces.update({base: (crossStackingForce(), crossStackingForce())})
+            crossStackingForces[base] = (crossStackingForce(), crossStackingForce())
         self.crossStackingForces = crossStackingForces
 
     def defineInteraction(self):
@@ -329,7 +331,13 @@ class CrossStacking(DNAForce):
 
         # Parameters
         cross_definition = self.dna.cross_definition[self.dna.cross_definition['DNA'] == self.dna.DNAtype].copy()
-        i = [a for a in zip(cross_definition['Base_d1'], cross_definition['Base_a1'], cross_definition['Base_a3'])]
+        i = list(
+            zip(
+                cross_definition['Base_d1'],
+                cross_definition['Base_a1'],
+                cross_definition['Base_a3'],
+            )
+        )
         cross_definition.index = i
 
         donors = {i: [] for i in ['A', 'T', 'G', 'C']}
@@ -385,7 +393,7 @@ class CrossStacking(DNAForce):
                     # This also reduces the number of exclusions in the force
                     maxn = 6 if self.OpenCLPatch else 9
                     if (self.dna.atoms.at[i, 'chainID'] == self.dna.atoms.at[j, 'chainID'] and abs(i - j) <= maxn) or \
-                            (not self.OpenCLPatch and i > j):
+                                (not self.OpenCLPatch and i > j):
                         c1.addExclusion(ii, jj)
                         c2.addExclusion(jj, ii)
 

@@ -17,12 +17,14 @@ class ExclusionProteinDNA(ProteinDNAForce):
         super().__init__(dna, protein)
 
     def reset(self):
-        exclusionForce = openmm.CustomNonbondedForce(f"""k_exclusion_protein_DNA*energy;
+        exclusionForce = openmm.CustomNonbondedForce(
+            """k_exclusion_protein_DNA*energy;
                          energy=(4*epsilon*((sigma/r)^12-(sigma/r)^6)-offset)*step(cutoff-r);
                          offset=4*epsilon*((sigma/cutoff)^12-(sigma/cutoff)^6);
                          sigma=0.5*(sigma1+sigma2); 
                          epsilon=sqrt(epsilon1*epsilon2);
-                         cutoff=sqrt(cutoff1*cutoff2)""")
+                         cutoff=sqrt(cutoff1*cutoff2)"""
+        )
         exclusionForce.addGlobalParameter('k_exclusion_protein_DNA', self.k)
         exclusionForce.addPerParticleParameter('epsilon')
         exclusionForce.addPerParticleParameter('sigma')
@@ -103,8 +105,10 @@ class ElectrostaticsProteinDNA(ProteinDNAForce):
         denominator = denominator.in_units_of(unit.kilocalorie_per_mole**-1 * unit.nanometer**-1)
         #print(ldby, denominator)
         k = self.k
-        electrostaticForce = openmm.CustomNonbondedForce(f"""k_electro_protein_DNA*energy;
-                             energy=q1*q2*exp(-r/inter_dh_length)/inter_denominator/r;""")
+        electrostaticForce = openmm.CustomNonbondedForce(
+            """k_electro_protein_DNA*energy;
+                             energy=q1*q2*exp(-r/inter_dh_length)/inter_denominator/r;"""
+        )
         electrostaticForce.addPerParticleParameter('q')
         electrostaticForce.addGlobalParameter('k_electro_protein_DNA', k)
         electrostaticForce.addGlobalParameter('inter_dh_length', ldby)
@@ -206,10 +210,7 @@ class AMHgoProteinDNA(ProteinDNAForce):
 
         contact_list = np.loadtxt("contact_protein_DNA.dat")
         for i in range(len(contact_list)):
-            if self.aaweight:
-                gamma_ij = contact_list[i][3]
-            else:
-                gamma_ij = 1.0
+            gamma_ij = contact_list[i][3] if self.aaweight else 1.0
             if (self.chain_protein, int(contact_list[i][0]), 'CB') in atoms.index:
                  CB_protein = atoms[(atoms['chainID'] == self.chain_protein) & (atoms['resSeq'] == int(contact_list[i][0])) & (atoms['name'] == 'CB') & atoms['resname'].isin(_proteinResidues)].copy()
             else:
