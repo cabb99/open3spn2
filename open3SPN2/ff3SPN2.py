@@ -172,11 +172,13 @@ class DNA(object):
             for b in [b1,b2]:
                 b['recname']='ATOM'
                 b['resname']='D'+b['base']
-                b['resSeq']=row[0]+1
                 b['occupancy']=1.00
                 b['tempFactor']=1.00
                 b['element']=b['name'].str[0]
-            
+
+            b1['resSeq']=row[0]+1
+            b2['resSeq']=len(data)-row[0]
+
             b1['chainID']='A'
             b2['chainID']='B'
 
