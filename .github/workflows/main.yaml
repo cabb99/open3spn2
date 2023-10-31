@@ -44,7 +44,7 @@ jobs:
       shell: bash -l {0}
       run: |
         conda activate open3spn2
-        pytest --skip-platform=opencl Tests/
+        pytest --skip-platform=opencl tests/
 
     - name: Slack Notification (on failure)
       if: failure()

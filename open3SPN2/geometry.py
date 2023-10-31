@@ -98,10 +98,3 @@ class Transform:
         """
         c, s = np.cos(theta), np.sin(theta)
         return np.array([[c, 0, s], [0, 1, 0], [-s, 0, c]])
-
-
-
-
-if __name__=='__main__':
-    test_default_values()
-    test_given_values()

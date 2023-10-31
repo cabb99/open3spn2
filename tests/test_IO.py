@@ -3,7 +3,7 @@ from open3SPN2 import *
 # Unit testing
 def test_DNA_from_pdb():
     """ Test correct DNA initialization from PDB"""
-    mol = DNA.fromPDB("Tests/1svc/1svc.pdb", template_from_X3DNA=False)
+    mol = DNA.fromPDB("tests/1svc/1svc.pdb", template_from_X3DNA=False)
 
 
 def test_DNA_from_gro():
@@ -58,7 +58,7 @@ def test_DNA_from_seq():
 
 def test_DNA_from_xyz():
     """Tests the correct parsing from an xyz file"""
-    mol = DNA.fromXYZ('Tests/adna/in00_conf.xyz', template_from_X3DNA=False)
+    mol = DNA.fromXYZ('tests/adna/in00_conf.xyz', template_from_X3DNA=False)
     assert mol.atoms.at[8, 'name'] == 'P'
     assert round(mol.atoms.at[188, 'y'], 6) == -8.779343
 
@@ -67,14 +67,14 @@ def test_DNA_from_xyz():
 
 def test_parse_xyz():
     """Tests the example trajectory parsing"""
-    xyz_data = parse_xyz('Tests/adna/traj.xyz')
+    xyz_data = parse_xyz('tests/adna/traj.xyz')
     assert xyz_data.at[1, 'name'] == 7
     assert xyz_data.at[1, 'x'] == 4.34621
 
 
 def test_parse_log():
     """Tests the example log parsing"""
-    log_data = parse_log('Tests/adna/sim.log')
+    log_data = parse_log('tests/adna/sim.log')
     assert log_data.at[1, 'Step'] == 2000
     assert log_data.at[1, 'eexcl'] == 0.45734636
 
@@ -104,3 +104,17 @@ def test_transform_known():
     np.testing.assert_almost_equal(transform.half_rotation, expected_half_rotation, decimal=6)
     np.testing.assert_almost_equal(transform.full_displacement, expected_full_displacement, decimal=6)
     np.testing.assert_almost_equal(transform.half_displacement, expected_half_displacement, decimal=6)
+
+def test_DNA_to_pdb(tmp_path):
+    pdb_file_path = tmp_path / "test.pdb"
+    assert not pdb_file_path.exists()
+
+    dna = DNA.fromSequence("ACTG")
+    dna.to_pdb(pdb_file_path)
+    assert pdb_file_path.exists()
+
+    with open(pdb_file_path, 'r') as file:
+        contents = file.read()
+        assert "ATOM      1  A   DA  A   1      -0.440   2.425   0.012  0.00  0.00          N   " in contents
+        assert "ATOM     12  C   DC  B   1       3.949   0.192   9.897  0.00  0.00          O   " in contents
+        assert "ATOM     22  S   DT  B   4      -2.848  -6.597   0.978  0.00  0.00          H   " in contents

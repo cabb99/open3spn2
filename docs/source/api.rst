@@ -1,25 +1,31 @@
-Classes and functions
-===============================
+open3SPN2 Module Documentation
+==============================
 
 .. automodule:: open3SPN2
     :noindex:
-    
-DNA
-------------------
+
+Classes and Functions
+---------------------
+
+DNA Class
+^^^^^^^^^^^^^^^^^^^^^^^
+
 .. autoclass:: open3SPN2.DNA
     :member-order: bysource
     :members:
 
-System
-------------------
+System Class
+^^^^^^^^^^^^^^^^^^^^^^^^^^
+
 .. autoclass:: open3SPN2.System
     
     .. automethod:: __init__
     
     .. rubric:: Methods
-    
+
 DNA Forces
-------------------
+^^^^^^^^^^
+
 .. autoclass:: open3SPN2.Bond
     :member-order: bysource
     :members:
@@ -35,7 +41,7 @@ DNA Forces
 .. autoclass:: open3SPN2.Stacking
     :member-order: bysource
     :members:
-    
+
 .. autoclass:: open3SPN2.BasePair
     :member-order: bysource
     :members:
@@ -52,8 +58,9 @@ DNA Forces
     :member-order: bysource
     :members:
 
-DNA - Protein Forces
---------------------
+DNA-Protein Forces
+^^^^^^^^^^^^^^^^^^
+
 .. autoclass:: open3SPN2.ExclusionProteinDNA
     :member-order: bysource
     :members:
@@ -62,28 +69,31 @@ DNA - Protein Forces
     :member-order: bysource
     :members:
 
-Utils
------
+Utility Functions
+^^^^^^^^^^^^^^^^^
+
 .. autofunction:: open3SPN2.parseConfigTable
-    
+
 .. autofunction:: open3SPN2.parsePDB
-    
+
 .. autofunction:: open3SPN2.fixPDB
-    
+
 .. autofunction:: open3SPN2.pdb2table
 
-Tests
------
-.. autoclass:: open3SPN2.TestEnergies
+Tests Functions
+^^^^^^^^^^^^^^^^^^^^^^^^
+
+.. autoclass:: tests.TestEnergies
     :member-order: bysource
     :members:
-    
-.. autofunction:: open3SPN2.test_DNA_from_xyz
-    
-.. autofunction:: open3SPN2.test_parse_xyz
-    
-.. autofunction:: open3SPN2.test_parse_log
-    
+
+.. autofunction:: tests.test_DNA_from_xyz
+
+.. autofunction:: tests.test_parse_xyz
+
+.. autofunction:: tests.test_parse_log
+
 Exceptions
-----------
+^^^^^^^^^^
+
 .. autoclass:: open3SPN2.DNATypeError

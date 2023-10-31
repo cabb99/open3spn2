@@ -1,4 +1,6 @@
-from open3SPN2 import DNA, System, parse_log, forces
+from open3SPN2 import DNA, System, forces
+from open3SPN2.parser.xyz import parse_xyz
+from open3SPN2.parser.log import parse_log
 import pandas
 import numpy as np
 import openmm.app
@@ -10,7 +12,9 @@ from pathlib import Path
 
 # Define a fixture to load the test sets
 # Define a module-level variable to store the test sets
-_test_sets = pd.read_csv('Tests/test_cases.csv', comment='#')
+
+test_path = Path(__file__).parent 
+_test_sets = pd.read_csv(test_path/'test_cases.csv', comment='#')
 _ef = 1 * unit.kilocalorie / unit.kilojoule  # energy scaling factor
 
 @pytest.fixture
@@ -51,8 +55,8 @@ class TestEnergies:
   
     def _test_energy(self,
                      log_energy='E_bond',
-                     log_file='Tests/adna/sim.log',
-                     traj_file='Tests/adna/traj.xyz',
+                     log_file='tests/adna/sim.log',
+                     traj_file='tests/adna/traj.xyz',
                      force='Bond', periodic_size=94.2,
                      platform_name='Reference', dna=None, system=None):
         self.dna = dna
@@ -84,8 +88,8 @@ class TestEnergies:
 
     def _test_force(self,
                     log_energy='E_bond',
-                    log_file='Tests/adna/sim.log',
-                    traj_file='Tests/adna/traj.xyz',
+                    log_file='tests/adna/sim.log',
+                    traj_file='tests/adna/traj.xyz',
                     force='Bond', periodic_size=94.2,
                     platform_name='Reference', dna=None, system=None):
         self.dna = dna
@@ -120,8 +124,7 @@ class TestEnergies:
         assert nan_force_particles == 0, "At least one particle has undefined force"
 
     def _test_energies_slow(self):
-        test_sets = pandas.read_csv('Tests/test_cases.csv', comment='#')
-        for i, test in test_sets.iterrows():
+        for i, test in _test_sets.iterrows():
             dna_type = test['DNA type']
             folder = test['Folder']
             yield self._test_energy, test['Energy term'], f'{folder}/{test.Log}', f'{folder}/{test.Trajectory}', \
