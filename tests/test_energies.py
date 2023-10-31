@@ -12,7 +12,9 @@ from pathlib import Path
 
 # Define a fixture to load the test sets
 # Define a module-level variable to store the test sets
-_test_sets = pd.read_csv('tests/test_cases.csv', comment='#')
+
+test_path = Path(__file__).parent 
+_test_sets = pd.read_csv(test_path/'test_cases.csv', comment='#')
 _ef = 1 * unit.kilocalorie / unit.kilojoule  # energy scaling factor
 
 @pytest.fixture
