@@ -17,7 +17,7 @@ except:
 
 setup(
       name = 'open3SPN2',
-      packages = ['open3SPN2'],
+      packages = find_packages(),
       version=versioneer.get_version(),
       cmdclass=versioneer.get_cmdclass(),
       license='MIT',
@@ -27,7 +27,7 @@ setup(
       author = 'Carlos Bueno', 
       author_email = 'carlos.bueno@rice.edu', 
       url = 'https://github.com/cabb99/open3spn2', 
-      download_url = 'https://github.com/cabb99/open3spn2/archive/0.2.0.tar.gz',
+      download_url = 'https://github.com/cabb99/open3spn2/archive/0.3.3.tar.gz',
       keywords = ['dna', 'forcefield', 'openmm'],
       package_data={'open3SPN2': ['3SPN2.conf','3SPN2.xml','DNA_atomic.csv']},
       include_package_data=True,
