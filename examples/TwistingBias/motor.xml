@@ -1,0 +1,11 @@
+<ForceField>
+  <AtomTypes>
+   <Type name="0" class="X" element="C" mass="1000"/>
+  </AtomTypes>
+  <Residues>
+   <Residue name="X">
+    <Atom name="X1" type="0"/>
+    <Atom name="X2" type="0"/>
+   </Residue>
+  </Residues>
+</ForceField>
