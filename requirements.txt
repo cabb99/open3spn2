@@ -1,0 +1,6 @@
+biopython
+pandas
+numpy
+scipy
+openmm
+pdbfixer

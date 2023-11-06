@@ -36,10 +36,8 @@ setup(
               'pandas',
               'numpy',
               'scipy',
-              'mdtraj',
               'openmm',
               'pdbfixer',
-              'nose',
           ],
       classifiers=[
         'Development Status :: 3 - Alpha', 

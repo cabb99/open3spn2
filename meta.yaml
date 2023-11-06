@@ -1,44 +1,43 @@
+{% set name = "open3spn2" %}
+{% set version = "0.3.3" %}
+
 package:
-  name: "open3spn2"
-  version: "0.3.2"
+  name: "{{ name|lower }}"
+  version: "{{ version }}"
 
 source:
-  git_url: https://github.com/cabb99/open3spn2.git
-  git_rev: 0.3.2
-  git_depth: -1 # (Defaults to -1/not shallow)
+  url: https://github.com/cabb99/{{ name }}/archive/refs/tags/{{ version }}.tar.gz
+  sha256: 549f4023e313af0a7c51e6427cf1612cb3e6afb13d2fac704db0de88622dd812
 
 build:
   noarch: python
   number: 0
-  script: python setup.py install --single-version-externally-managed --record=record.txt
+  script: "{{ PYTHON }} -m pip install . -vv"
 
 requirements:
   host:
     - pip
-    - python
   run:
-    - python
     - biopython
-    - mdtraj
-    - nose
     - numpy
     - openmm
     - pandas
-    - scipy
     - pdbfixer
+    - scipy
 
 test:
   imports:
     - open3SPN2
 
 about:
-  home: "https://github.com/cabb99/open3spn2"
+  home: https://github.com/cabb99/open3spn2
+  summary: 'Implementation of 3SPN2 and 3SPN2.C forcefields in OpenMM'
+  description: "An Implementation of the 3SPN.2 and 3SPN.2C coarse-grained molecular model of DNA in OpenMM."
   license: MIT
   license_family: MIT
   license_file: LICENSE.txt
-  summary: "Implementation of 3SPN2 and 3SPN2.C forcefields in openmm"
-  doc_url: 
-  dev_url: 
+  doc_url: https://open3spn2.readthedocs.io/en/latest/
+  dev_url: https://github.com/cabb99/open3spn2
 
 extra:
   recipe-maintainers:

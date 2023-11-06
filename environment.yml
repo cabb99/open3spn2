@@ -4,12 +4,9 @@ channels:
 - defaults
 dependencies:
 - biopython
-- matplotlib
 - pandas
 - numpy
 - scipy
-- mdtraj
 - openmm
 - pdbfixer
-- nose
 - pytest
