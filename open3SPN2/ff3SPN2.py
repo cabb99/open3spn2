@@ -54,7 +54,7 @@ class DNA(object):
         # Parse all sections of the configuration file
         self.config = {}
         for c in config.sections():
-            self.config.update({c: parseConfigTable(config[c])})
+            self.config[c] = parseConfigTable(config[c])
 
         # Assign main sections to variables
         self.particle_definition = self.config['Particles']

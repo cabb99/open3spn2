@@ -38,21 +38,25 @@ def parsePDB(pdb_file):
     """ Transforms the pdb file into a pandas table for easy access and data editing"""
 
     def pdb_line(line):
-        return dict(recname=str(line[0:6]).strip(),
-                    serial=int(line[6:11]),
-                    name=str(line[12:16]).strip(),
-                    altLoc=str(line[16:17]),
-                    resname=str(line[17:20]).strip(),
-                    chainID=str(line[21:22]),
-                    resSeq=int(line[22:26]),
-                    iCode=str(line[26:27]),
-                    x=float(line[30:38]),
-                    y=float(line[38:46]),
-                    z=float(line[46:54]),
-                    occupancy=1.0 if line[54:60].strip()=='' else float(line[54:60]), # Assume occupancy 1 if empty
-                    tempFactor=1.0 if line[60:66].strip()=='' else float(line[60:66]),# Assume beta 1 if empty
-                    element=str(line[76:78]),
-                    charge=str(line[78:80]))
+        return dict(
+            recname=str(line[:6]).strip(),
+            serial=int(line[6:11]),
+            name=str(line[12:16]).strip(),
+            altLoc=str(line[16:17]),
+            resname=str(line[17:20]).strip(),
+            chainID=str(line[21:22]),
+            resSeq=int(line[22:26]),
+            iCode=str(line[26:27]),
+            x=float(line[30:38]),
+            y=float(line[38:46]),
+            z=float(line[46:54]),
+            occupancy=1.0 if line[54:60].strip() == '' else float(line[54:60]),
+            tempFactor=1.0
+            if line[60:66].strip() == ''
+            else float(line[60:66]),
+            element=str(line[76:78]),
+            charge=str(line[78:80]),
+        )
 
     with open(pdb_file, 'r') as pdb:
         lines = []
