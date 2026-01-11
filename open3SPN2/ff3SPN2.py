@@ -21,7 +21,7 @@ import os
 import pdbfixer
 import pandas
 import subprocess
-import nose
+#import nose
 
 __location__ = os.path.realpath(os.path.join(os.getcwd(), os.path.dirname(__file__)))
 _ef = 1 * unit.kilocalorie / unit.kilojoule  # energy scaling factor
@@ -1488,6 +1488,27 @@ class ElectrostaticsProteinDNA(ProteinDNAForce):
         # addExclusions
         addNonBondedExclusions(self.dna, self.force)
 
+class  BiasElectrostaticsProteinDNA(ProteinDNAForce):
+    """ Protein-DNA string potential"""
+    def __init__(self, dna, protein, k_ebias=1*unit.kilocalorie_per_mole,center=-7*unit.kilocalorie_per_mole):
+        self.k_ebias = k_ebias
+        self.center = center
+        super().__init__(dna, protein)
+
+    def reset(self):
+        k_ebias=self.k_ebias.value_in_unit(unit.kilojoule_per_mole)
+        center=self.center.value_in_unit(unit.kilojoule_per_mole)
+        ebiasForce = simtk.openmm.CustomCVForce(f"0.5*{k_ebias}*(E_elec-({center}))^2")
+        #ebiasForce = simtk.openmm.CustomCVForce(f"(E_elec-{center})*(E_elec-{center})")
+        elec = ElectrostaticsProteinDNA(self.dna, self.protein)
+        E_elec = elec.force
+        ebiasForce.addCollectiveVariable("E_elec", E_elec)
+        print (E_elec)
+        self.force = ebiasForce
+
+    def defineInteraction(self):
+        print("ElectrostaticsProteinDNA bias on: center, k_ebias = ", self.center, self.k_ebias)
+
 class AMHgoProteinDNA(ProteinDNAForce):
     """ Protein-DNA amhgo potential"""
     def __init__(self, dna, protein, chain_protein='A', chain_DNA='B', k_amhgo_PD=1*unit.kilocalorie_per_mole, sigma_sq=0.05*unit.nanometers**2, aaweight=False, globalct=True, cutoff=1.8, force_group=16):
@@ -1654,7 +1675,8 @@ forces = dict(Bond=Bond,
               Electrostatics=Electrostatics)
 
 protein_dna_forces=dict(ExclusionProteinDNA=ExclusionProteinDNA,
-                        ElectrostaticsProteinDNA=ElectrostaticsProteinDNA)
+                        ElectrostaticsProteinDNA=ElectrostaticsProteinDNA,
+                        BiasElectrostaticsProteinDNA=BiasElectrostaticsProteinDNA)
 
 
 # Unit testing
