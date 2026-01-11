@@ -1,6 +1,5 @@
-name: py36
+name: open3spn2
 channels:
-- omnia
 - conda-forge
 - defaults
 dependencies:
@@ -9,8 +8,8 @@ dependencies:
 - pandas
 - numpy
 - scipy
-- fftw3f
 - mdtraj
 - openmm
 - pdbfixer
 - nose
+- pytest

@@ -63,8 +63,8 @@ To set up the simulation you will need the openmm package as detailed in :doc:`i
 
 .. testcode::
 
-    import simtk.openmm
-    import simtk.openmm.app
+    import openmm
+    import openmm.app
     import simtk.unit
     import sys
     import numpy as np
@@ -76,7 +76,7 @@ To set up the simulation you will need the openmm package as detailed in :doc:`i
     #Set initial positions
     simulation.context.setPositions(s.coord.getPositions())
     
-    energy_unit=simtk.openmm.unit.kilojoule_per_mole
+    energy_unit=openmm.unit.kilojoule_per_mole
     #Total energy
     state = simulation.context.getState(getEnergy=True)
     energy = state.getPotentialEnergy().value_in_unit(energy_unit)
@@ -109,8 +109,8 @@ Please make sure that the energies obtained coincide with the energies shown her
 .. testcode::
     
     #Add simulation reporters
-    dcd_reporter=simtk.openmm.app.DCDReporter(f'output.dcd', 1000)
-    energy_reporter=simtk.openmm.app.StateDataReporter(sys.stdout, 1000, step=True,time=True,
+    dcd_reporter=openmm.app.DCDReporter(f'output.dcd', 1000)
+    energy_reporter=openmm.app.StateDataReporter(sys.stdout, 1000, step=True,time=True,
                                                        potentialEnergy=True, temperature=True)
     simulation.reporters.append(dcd_reporter)
     simulation.reporters.append(energy_reporter)
@@ -208,10 +208,10 @@ You can find this example on the `examples/Protein_DNA <https://github.com/cabb9
 
     #Create the merged system
 
-    pdb=simtk.openmm.app.PDBFile('clean.pdb')
+    pdb=openmm.app.PDBFile('clean.pdb')
     top=pdb.topology
     coord=pdb.positions
-    forcefield=simtk.openmm.app.ForceField(ffAWSEM.xml,open3SPN2.xml)
+    forcefield=openmm.app.ForceField(ffAWSEM.xml,open3SPN2.xml)
     s=forcefield.createSystem(top)
 
 .. code:: ipython3
@@ -232,7 +232,7 @@ You can find this example on the `examples/Protein_DNA <https://github.com/cabb9
     protein=ffAWSEM.Protein.fromCoarsePDB('clean.pdb',sequence=protein_sequence_one)
     dna.periodic=False
     protein.periodic=False
-    
+
     #Copy the AWSEM parameter files
     ffAWSEM.copy_parameter_files()
 
@@ -242,7 +242,7 @@ You can find this example on the `examples/Protein_DNA <https://github.com/cabb9
     keepCMMotionRemover=True
     j=0
     for i, f in enumerate(s.getForces()):
-        if keepCMMotionRemover and i == 0 and f.__class__ == simtk.openmm.CMMotionRemover:
+        if keepCMMotionRemover and i == 0 and f.__class__ == openmm.CMMotionRemover:
             # print('Kept ', f.__class__)
             j += 1
             continue
@@ -253,10 +253,10 @@ You can find this example on the `examples/Protein_DNA <https://github.com/cabb9
         assert len(s.getForces()) == 0, 'Not all the forces were removed'
     else:
         assert len(s.getForces()) <= 1, 'Not all the forces were removed'
-    
+
 .. code:: ipython3
 
-    #Initialize the force dictionary    
+    #Initialize the force dictionary
     forces={}
     for i in range(s.getNumForces()):
         force = s.getForce(i)
@@ -276,14 +276,15 @@ You can find this example on the `examples/Protein_DNA <https://github.com/cabb9
     openAWSEMforces = dict(Connectivity=ffAWSEM.functionTerms.basicTerms.con_term,
                            Chain=ffAWSEM.functionTerms.basicTerms.chain_term,
                            Chi=ffAWSEM.functionTerms.basicTerms.chi_term,
-                           Excl=ffAWSEM.functionTerms.basicTerms.excl_term,
+                           Excl=ffAWSEM.functionTerms.basicTerms.excl_term_v2,
                            rama=ffAWSEM.functionTerms.basicTerms.rama_term,
                            rama_pro=ffAWSEM.functionTerms.basicTerms.rama_proline_term,
+                           #rama_ss=ffAWSEM.functionTerms.basicTerms.rama_ssweight_term,
                            contact=ffAWSEM.functionTerms.contactTerms.contact_term,
-                           frag  = partial(ffAWSEM.functionTerms.templateTerms.fragment_memory_term, 
-                                           frag_file_list_file="./single_frags.mem", 
-                                           npy_frag_table="./single_frags.npy", 
-                                           UseSavedFragTable=False, 
+                           frag  = partial(ffAWSEM.functionTerms.templateTerms.fragment_memory_term,
+                                           frag_file_list_file="./single_frags.mem",
+                                           npy_frag_table="./single_frags.npy",
+                                           UseSavedFragTable=False,
                                            k_fm=0.04184/3),
                            beta1 = ffAWSEM.functionTerms.hydrogenBondTerms.beta_term_1,
                            beta2 = ffAWSEM.functionTerms.hydrogenBondTerms.beta_term_2,
@@ -348,8 +349,8 @@ You can find this example on the `examples/Protein_DNA <https://github.com/cabb9
     frag
     Loading Fragment files(Gro files)
     Saving fragment table as npy file to speed up future calculation.
-    All gro files information have been stored in the ./single_frags.npy.             
-    You might want to set the 'UseSavedFragTable'=True to speed up the loading next time.             
+    All gro files information have been stored in the ./single_frags.npy.
+    You might want to set the 'UseSavedFragTable'=True to speed up the loading next time.
     But be sure to remove the .npy file if you modify the .mem file. otherwise it will keep using the old frag memeory.
     beta1
     beta_1 term ON
@@ -365,17 +366,19 @@ You can find this example on the `examples/Protein_DNA <https://github.com/cabb9
     No ssweight given, assume all zero
 
 
+Then set-up the simulation
+
 .. code:: ipython3
 
     # Set up the simulation
-    temperature=300 * simtk.openmm.unit.kelvin
+    temperature=300 * openmm.unit.kelvin
     platform_name='OpenCL' #'Reference','CPU','CUDA', 'OpenCL'
 
-    integrator = simtk.openmm.LangevinIntegrator(temperature, 1 / simtk.openmm.unit.picosecond, 2 * simtk.openmm.unit.femtoseconds)
-    platform = simtk.openmm.Platform.getPlatformByName(platform_name)
-    simulation = simtk.openmm.app.Simulation(top,s, integrator, platform)
+    integrator = openmm.LangevinIntegrator(temperature, 1 / openmm.unit.picosecond, 2 * openmm.unit.femtoseconds)
+    platform = openmm.Platform.getPlatformByName(platform_name)
+    simulation = openmm.app.Simulation(top,s, integrator, platform)
     simulation.context.setPositions(coord)
-    energy_unit=simtk.openmm.unit.kilojoule_per_mole
+    energy_unit=openmm.unit.kilojoule_per_mole
     state = simulation.context.getState(getEnergy=True)
     energy = state.getPotentialEnergy().value_in_unit(energy_unit)
     print(energy)
@@ -389,7 +392,7 @@ You can find this example on the `examples/Protein_DNA <https://github.com/cabb9
 
     #Obtain total energy
 
-    energy_unit=simtk.openmm.unit.kilojoule_per_mole
+    energy_unit=openmm.unit.kilojoule_per_mole
     state = simulation.context.getState(getEnergy=True)
     energy = state.getPotentialEnergy().value_in_unit(energy_unit)
     print('TotalEnergy',round(energy,6),energy_unit.get_symbol())
@@ -464,7 +467,7 @@ You can find this example on the `examples/Protein_DNA <https://github.com/cabb9
     8000,16.00000000000201,-3296.966064453125,305.38198987465074
     9000,18.000000000000902,-3182.54443359375,316.07187422798313
     10000,19.999999999999794,-3229.941650390625,309.6002450725328
-        
+
 .. code:: ipython3
 
     #Get the detailed energy after the simulation
