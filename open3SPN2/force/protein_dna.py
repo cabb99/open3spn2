@@ -14,6 +14,8 @@ class ExclusionProteinDNA(ProteinDNAForce):
     def __init__(self, dna, protein, k=1, force_group=14):
         self.k = k
         self.force_group = force_group
+        self.radius_override = radius_override
+        self.cutoff = cutoff    #cutoff is in nm
         super().__init__(dna, protein)
 
     def reset(self):
@@ -27,13 +29,14 @@ class ExclusionProteinDNA(ProteinDNAForce):
         exclusionForce.addPerParticleParameter('epsilon')
         exclusionForce.addPerParticleParameter('sigma')
         exclusionForce.addPerParticleParameter('cutoff')
-        exclusionForce.setCutoffDistance(1.55)
+        exclusionForce.setCutoffDistance(self.cutoff)
         # exclusionForce.setUseLongRangeCorrection(True)
         exclusionForce.setForceGroup(self.force_group)  # There can not be multiple cutoff distance on the same force group
         if self.periodic:
             exclusionForce.setNonbondedMethod(exclusionForce.CutoffPeriodic)
         else:
             exclusionForce.setNonbondedMethod(exclusionForce.CutoffNonPeriodic)
+        print(f"protein dna cutoff {exclusionForce.getCutoffDistance()}")
         self.force = exclusionForce
 
     def defineInteraction(self):
@@ -61,15 +64,25 @@ class ExclusionProteinDNA(ProteinDNAForce):
         for i, atom in atoms.iterrows():
             if atom.is_dna:
                 param = particle_definition.loc['DNA' + atom['name']]
-                parameters = [param.epsilon,
-                              param.radius,
-                              param.cutoff]
+                if self.radius_override == None:
+                    parameters = [param.epsilon,
+                                param.radius,
+                                param.cutoff]
+                else:
+                    parameters = [param.epsilon,
+                                self.radius_override,
+                                param.cutoff]
                 DNA_list += [i]
             elif atom.is_protein:
                 param = particle_definition.loc['Protein' + atom['name']]
-                parameters = [param.epsilon,
-                              param.radius,
-                              param.cutoff]
+                if self.radius_override == None:
+                    parameters = [param.epsilon,
+                                param.radius,
+                                param.cutoff]
+                else:
+                    parameters = [param.epsilon,
+                                self.radius_override,
+                                param.cutoff]
                 protein_list += [i]
             else:
                 print(f'Residue {i} not included in protein-DNA interactions')
@@ -85,9 +98,11 @@ class ExclusionProteinDNA(ProteinDNAForce):
 
 class ElectrostaticsProteinDNA(ProteinDNAForce):
     """DNA-protein and protein-protein electrostatics."""
-    def __init__(self, dna, protein, k=1, force_group=15):
+    def __init__(self, dna, protein, k=1, ldby = 1.2 * unit.nanometer, cutoff_distance = None, force_group=15):
         self.k = k
         self.force_group = force_group
+        self.ldby = ldby
+        self.cutoff_distance = cutoff_distance
         super().__init__(dna, protein)
 
     def reset(self):
@@ -98,11 +113,12 @@ class ElectrostaticsProteinDNA(ProteinDNAForce):
         ec = 1.60217653E-19 * unit.coulomb  # proton charge
         pv = 8.8541878176E-12 * unit.farad / unit.meter  # dielectric permittivity of vacuum
 
-        ldby = 1.2 * unit.nanometer # np.sqrt(dielectric * pv * kb * T / (2.0 * Na * ec ** 2 * C))
+        #ldby = 1.2 * unit.nanometer # np.sqrt(dielectric * pv * kb * T / (2.0 * Na * ec ** 2 * C))
         denominator = 4 * np.pi * pv * dielectric / (Na * ec ** 2)
         denominator = denominator.in_units_of(unit.kilocalorie_per_mole**-1 * unit.nanometer**-1)
         #print(ldby, denominator)
         k = self.k
+        ldby = self.ldby
         electrostaticForce = openmm.CustomNonbondedForce(f"""k_electro_protein_DNA*energy;
                              energy=q1*q2*exp(-r/inter_dh_length)/inter_denominator/r;""")
         electrostaticForce.addPerParticleParameter('q')
@@ -110,7 +126,16 @@ class ElectrostaticsProteinDNA(ProteinDNAForce):
         electrostaticForce.addGlobalParameter('inter_dh_length', ldby)
         electrostaticForce.addGlobalParameter('inter_denominator', denominator)
 
-        electrostaticForce.setCutoffDistance(4)
+        if self.cutoff_distance == None:
+            cutoff_distance = 4 #should default to its former value, not ldby * 4
+        else:
+            cutoff_distance = self.cutoff_distance
+
+        cutoff_nm = cutoff_distance.value_in_unit(unit.nanometer)
+
+        electrostaticForce.setCutoffDistance(cutoff_nm)
+        print(f"protein dna screening length {ldby} nm")
+        print(f"protein dna cutoff {electrostaticForce.getCutoffDistance()} nm")
         if self.periodic:
             electrostaticForce.setNonbondedMethod(electrostaticForce.CutoffPeriodic)
         else:
