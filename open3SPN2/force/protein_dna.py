@@ -11,7 +11,7 @@ _proteinResidues = ['IPR', 'IGL', 'NGP']
 
 class ExclusionProteinDNA(ProteinDNAForce):
     """ Protein-DNA exclusion potential"""
-    def __init__(self, dna, protein, k=1, force_group=14):
+    def __init__(self, dna, protein, k=1, radius_override = None, cutoff = 1.55, force_group=14):
         self.k = k
         self.force_group = force_group
         self.radius_override = radius_override
