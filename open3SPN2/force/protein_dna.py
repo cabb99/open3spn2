@@ -195,6 +195,200 @@ class ElectrostaticsProteinDNA(ProteinDNAForce):
         # addExclusions
         addNonBondedExclusions(self.dna, self.force)
 
+class BiasElectrostaticsProteinDNA(ProteinDNAForce):
+    """ Protein-DNA string potential"""
+    #k_ebias and center should be inputted
+    def __init__(self, dna, protein, k_ebias,center, k_elec, ldby, cutoff_distance = None, forceGroup=16):
+        self.k_ebias = k_ebias
+        self.center = center
+        self.k_elec = k_elec
+        self.ldby = ldby
+        self.forceGroup = forceGroup
+        self.cutoff_distance = cutoff_distance
+        super().__init__(dna, protein)
+
+    def reset(self):
+        #k_ebias=self.k_ebias.value_in_unit(unit.kilojoule_per_mole)
+        #center=self.center.value_in_unit(unit.kilojoule_per_mole)
+        k_ebias = self.k_ebias
+        center = self.center
+        ebiasForce = openmm.CustomCVForce(f"0.5*k_ebias*((E_elec-center)/4.184)^2")
+        E_elec = ElectrostaticsProteinDNA(self.dna, self.protein, k = self.k_elec, ldby = self.ldby, cutoff_distance = self.cutoff_distance)
+        elec = E_elec.force
+        #ebiasForce.addCollectiveVariable("E_elec", E_elec)
+        ebiasForce.addCollectiveVariable("E_elec", elec)    #Is in kJ/mol
+        ebiasForce.addGlobalParameter("k_ebias", k_ebias)   #
+        ebiasForce.addGlobalParameter("center", center)
+        ebiasForce.setForceGroup(self.forceGroup)
+        print(f"k_ebias = {k_ebias}")
+        print(f"center = {center}")
+        #print (E_elec)
+        self.force = ebiasForce
+
+    def defineInteraction(self):
+        print(f"ElectrostaticsProteinDNA bias on: center at {self.center}, k_ebias = {self.k_ebias}, with electrostatic parameters k_elec = {self.k_elec} and screening length {self.ldby}")
+
+# haven't verified that this is the most up to date and correct version
+#class proteinBasePairBias(ProteinDNAForce):
+#    """constrains protein to a particular base pair and its neighbors"""
+#    def __init__(self, dna, protein, indices, forceGroup=16):
+#        self.forceGroup = forceGroup
+#        assert len(indices)==12, indices # you can change this if you want, but be sure to also change the CustomCompoundBondForce instantiation below
+#        self.indices = indices
+#        super().__init__(dna,protein)
+#    def reset(self):
+#        E1 = "(4.184*(2*5*(tanh(30*((x)-(0.6)))+tanh(30*(-(x)-(0.6))))+2*10))" # shifted so that minimum is y=0
+#        # negative arguments don't make sense because we only want these to activate
+#        # when the component of the (protein-bp1) vector along the (bp2-bp1) vector is positive,
+#        # so we multiply by the openmm step() function, which is 1 when x>=0 and 0 otherwise.
+#        E1_positive = f'step(x)*{E1}'
+#        ####################################################################################################################################
+#        energy = f'{E1_positive.replace("x","comp_ip1")}+{E1_positive.replace("x","comp_im1")}'
+#        ########################################################################################################################################
+#        # define switching function that turns on (quickly goes from 0 to 1) when input is between 0 and infinity
+#        # define components based on dot product
+#        # p1, p2: phosphates on i-2
+#        # p3, p4: phosphates on i-1
+#        # p5, p6: phosphates on i
+#        # p7, p8: phosphates on i+1
+#        # p9, p10: phosphates on i+2
+#        # p11, p12: DD residues on opposites sides of interface
+#        comp_definitions=';comp_ip1=pointdistance(bx,by,bz,proteinx,proteiny,proteinz)*cos(pointangle(proteinx,proteiny,proteinz,bx,by,bz,bp1x,bp1y,bp1z))/pointdistance(bx,by,bz,bp1x,bp1y,bp1z)\
+#;comp_im1=pointdistance(bx,by,bz,proteinx,proteiny,proteinz)*cos(pointangle(proteinx,proteiny,proteinz,bx,by,bz,bm1x,bm1y,bm1z))/pointdistance(bx,by,bz,bm1x,bm1y,bm1z)\
+#;comp_ip2=pointdistance(bp1x,bp1y,bp1z,proteinx,proteiny,proteinz)*cos(pointangle(proteinx,proteiny,proteinz,bp1x,bp1y,bp1z,bp2x,bp2y,bp2z))/pointdistance(bp1x,bp1y,bp1z,bp2x,bp2y,bp2z)\
+#;comp_im2=pointdistance(bm1x,bm1y,bm1z,proteinx,proteiny,proteinz)*cos(pointangle(proteinx,proteiny,proteinz,bm1x,bm1y,bm1z,bm2x,bm2y,bm2z))/pointdistance(bm1x,bm1y,bm1z,bm2x,bm2y,bm2z)'
+#        avg_definitions = ';bm2x=(x1+x2)/2;bm2y=(y1+y2)/2;bm2z=(z1+z2)/2;bm1x=(x3+x4)/2;bm1y=(y3+y4)/2;bm1z=(z3+z4)/2;bx=(x5+x6)/2;by=(y5+y6)/2;bz=(z5+z6)/2;bp1x=(x7+x8)/2;bp1y=(y7+y8)/2;bp1z=(z7+z8)/2;bp2x=(x9+x10)/2;bp2y=(y9+y10)/2;bp2z=(z9+z10)/2;proteinx=(x11+x12)/2;proteiny=(y11+y12)/2;proteinz=(z11+z12)/2'
+#        print(f"{energy}{comp_definitions}{avg_definitions}")
+#        force = openmm.CustomCompoundBondForce(12,f'{energy}{comp_definitions}{avg_definitions}')
+#        force.addBond(self.indices)
+#        #force.setUsesPeriodicBoundaryConditions(True)
+#        force.setForceGroup(self.forceGroup)
+#        self.force = force
+#         
+#    def defineInteraction(self):
+#        pass
+
+class proteinBasePairGroupsHarmonicBias(ProteinDNAForce):
+    def __init__(self, dna, protein, base_pair_left_indicies, base_pair_right_indicies, protein_indices, base_pair_sep = 4, k=4.184, forceGroup=16):
+        #what indicies are members of protein_indicies, base_pair_left_indicies, and base_pair_right_indicies
+        self.k = k
+        self.base_pair_left_indicies = base_pair_left_indicies
+        self.base_pair_right_indicies = base_pair_right_indicies
+        self.protein_indices = protein_indices
+        self.base_pair_sep = base_pair_sep
+        self.forceGroup = forceGroup
+        super().__init__(dna,protein)
+    def reset(self):
+        #Group 1 centered around base pairs i-base_pair_sep/2
+        #Group 2 centered around base pairs i+base_pair_sep/2
+        #Group 3 centered around protein point
+
+        # Harmonic parameters
+        k = self.k      # kJ/mol (adjust as needed)
+        #k = self.k * 0.34 ** 2      # kJ/mol (adjust as needed)  (if need to adjust to kJ/(bp^2*mol))
+
+        #Define the harmonic bias
+        energy = f"0.5*{k}*(i)^2;"    # i is deviation base pair from target; be careful when processing for WHAM
+
+        #Converting ratio to base pair
+        ratio_bp = f"i={self.base_pair_sep}*(ratio-0.5);"    #base_pair_sep coefficient corresponds to base pairs i-base_pair_sep/2; i+base_pair_sep/2 where i is target base pair; midpoint type approximation 
+
+        #Calculate ratio of dot products
+        ratio_dots = "ratio=VAVDdots/VDVDdots;VAVDdots=VAx*VDx+VAy*VDy+VAz*VDz;VDVDdots=VDx*VDx+VDy*VDy+VDz*VDz;"
+
+        '''
+        # ChatGPT suggested simplification with cancellation out and removal of sqrt function; left as commented out as placeholder code
+
+        #Trigonometry
+        trig = "ratio=lengthVA*theta/lengthVD;"    #theta is a dot product ratio; arccos(theta) is the angle between VA and VD (not angle)
+
+        #Angle Definitions
+        angles = "theta=dot/(lengthVA*lengthVD);dot=VAx*VDx+VAy*VDy+VAz*VDz;lengthVA=sqrt(VAx^2+VAy^2+VAz^2);lengthVD=sqrt(VDx^2+VDy^2+VDz^2);"
+        
+        #If restoring this block of code; update expression initialization
+        '''
+
+        #Vector definitions
+        vectors = "VAx=Px-BPLx;VAy=Py-BPLy;VAz=Pz-BPLz;VDx=BPRx-BPLx;VDy=BPRy-BPLy;VDz=BPRz-BPLz;"
+        
+        #Particle definitions
+        particles= "BPLx=x1;BPLy=y1;BPLz=z1;BPRx=x2;BPRy=y2;BPRz=z2;Px=x3;Py=y3;Pz=z3"
+
+        expression = f"{energy}{ratio_bp}{ratio_dots}{vectors}{particles}"
+
+        #print(expression)
+
+        force = openmm.CustomCentroidBondForce(3, expression)
+        force.addGroup(self.base_pair_left_indicies)
+        force.addGroup(self.base_pair_right_indicies)
+        force.addGroup(self.protein_indices)
+        force.addBond([0,1,2])
+        force.setForceGroup(self.forceGroup)
+
+        self.force = force
+    def defineInteraction(self):
+        pass
+
+class proteinBasePairGroupsPosition(ProteinDNAForce):
+    def __init__(self, dna, protein, base_pair_left_indicies, base_pair_right_indicies, protein_indices, base_pair_sep = 4, k=4.184, forceGroup=16):
+        #what indicies are members of protein_indicies, base_pair_left_indicies, and base_pair_right_indicies
+        self.k = k
+        self.base_pair_left_indicies = base_pair_left_indicies
+        self.base_pair_right_indicies = base_pair_right_indicies
+        self.protein_indices = protein_indices
+        self.base_pair_sep = base_pair_sep
+        self.forceGroup = forceGroup
+        super().__init__(dna,protein)
+    def reset(self):
+        #Group 1 centered around base pairs i-base_pair_sep/2
+        #Group 2 centered around base pairs i+base_pair_sep/2
+        #Group 3 centered around protein point
+
+        # Harmonic parameters
+        k = self.k      # kJ/mol (adjust as needed)
+        #k = self.k * 0.34 ** 2      # kJ/mol (adjust as needed)  (if need to adjust to kJ/(bp^2*mol))
+
+        #Define the harmonic bias
+        energy = f"i;"    # i is deviation base pair from target; be careful when processing for WHAM
+
+        #Converting ratio to base pair
+        ratio_bp = f"i={self.base_pair_sep}*(ratio-0.5);"    #base_pair_sep coefficient corresponds to base pairs i-base_pair_sep/2; i+base_pair_sep/2 where i is target base pair; midpoint type approximation 
+
+        #Calculate ratio of dot products
+        ratio_dots = "ratio=VAVDdots/VDVDdots;VAVDdots=VAx*VDx+VAy*VDy+VAz*VDz;VDVDdots=VDx*VDx+VDy*VDy+VDz*VDz;"
+
+        '''
+        # ChatGPT suggested simplification with cancellation out and removal of sqrt function; left as commented out as placeholder code
+
+        #Trigonometry
+        trig = "ratio=lengthVA*theta/lengthVD;"    #theta is a dot product ratio; arccos(theta) is the angle between VA and VD (not angle)
+
+        #Angle Definitions
+        angles = "theta=dot/(lengthVA*lengthVD);dot=VAx*VDx+VAy*VDy+VAz*VDz;lengthVA=sqrt(VAx^2+VAy^2+VAz^2);lengthVD=sqrt(VDx^2+VDy^2+VDz^2);"
+        
+        #If restoring this block of code; update expression initialization
+        '''
+
+        #Vector definitions
+        vectors = "VAx=Px-BPLx;VAy=Py-BPLy;VAz=Pz-BPLz;VDx=BPRx-BPLx;VDy=BPRy-BPLy;VDz=BPRz-BPLz;"
+        
+        #Particle definitions
+        particles= "BPLx=x1;BPLy=y1;BPLz=z1;BPRx=x2;BPRy=y2;BPRz=z2;Px=x3;Py=y3;Pz=z3"
+
+        expression = f"{energy}{ratio_bp}{ratio_dots}{vectors}{particles}"
+
+        #print(expression)
+
+        force = openmm.CustomCentroidBondForce(3, expression)
+        force.addGroup(self.base_pair_left_indicies)
+        force.addGroup(self.base_pair_right_indicies)
+        force.addGroup(self.protein_indices)
+        force.addBond([0,1,2])
+        force.setForceGroup(self.forceGroup)
+
+        self.force = force
+    def defineInteraction(self):
+        pass
 
 class AMHgoProteinDNA(ProteinDNAForce):
     """ Protein-DNA amhgo potential"""
