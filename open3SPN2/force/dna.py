@@ -516,7 +516,7 @@ class Electrostatics(DNAForce, openmm.CustomNonbondedForce):
         ldby = ldby.in_units_of(unit.nanometer)
 
         if self.cutoff_distance == None:
-            cutoff_distance = 5 # for backward compatibility
+            cutoff_distance = 5 * unit.nanometer # for backward compatibility
         else:
             cutoff_distance = self.cutoff_distance
 
