@@ -1,0 +1,5 @@
+Configuration files were generated with the command;
+
+../../DSIM_ICNF/icnf.exe ../seq 2 1 . 0
+
+NOTE: A-DNA in 3SPN.2 is experimental and should not be used without further validation

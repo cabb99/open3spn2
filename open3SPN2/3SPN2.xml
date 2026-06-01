@@ -1,0 +1,74 @@
+<ForceField>
+  <AtomTypes>
+    <!-- DNA particles -->
+    <Type name="P" class="Phosphate" element="P" mass="94.9696"/>
+    <Type name="S DNA" class="Sugar" element="H" mass="83.1104"/>
+    <Type name="S RNA" class="Sugar" element="D" mass="99.1094"/>
+    <Type name="A Base" class="Base" element="N" mass="134.1220"/>
+    <Type name="T Base" class="Base" element="S" mass="125.1078"/>
+    <Type name="U Base" class="Base" element="S" mass="111.0868"/>
+    <Type name="G Base" class="Base" element="C" mass="150.1214"/>
+    <Type name="C Base" class="Base" element="O" mass="110.0964"/>
+    <!-- Ion particles -->
+    <Type name="Na" class="Ion" element="Mg" mass="0"/>
+    <Type name="Mg" class="Ion" element="Fe" mass="0"/>
+    <Type name="Ca" class="Ion" element="C" mass="0"/>
+  </AtomTypes>
+  <Residues>
+    <!-- DNA residues -->
+    <Residue name="DA">
+      <AllowPatch name="Initial"/>
+      <Atom name="P"  type="P"/>
+      <Atom name="S"  type="S DNA"/>
+      <Atom name="A"  type="A Base"/>
+    </Residue>
+    <Residue name="DC">
+      <AllowPatch name="Initial"/>
+      <Atom name="P"  type="P"/>
+      <Atom name="S"  type="S DNA"/>
+      <Atom name="C"  type="C Base"/>
+    </Residue>
+    <Residue name="DT">
+      <AllowPatch name="Initial"/>
+      <Atom name="P"  type="P"/>
+      <Atom name="S"  type="S DNA"/>
+      <Atom name="T"  type="T Base"/>
+    </Residue>
+    <Residue name="DG">
+      <AllowPatch name="Initial"/>
+      <Atom name="P"  type="P"/>
+      <Atom name="S"  type="S DNA"/>
+      <Atom name="G"  type="G Base"/>
+    </Residue>
+    <!-- RNA residues -->
+    <Residue name="A">
+      <AllowPatch name="Initial"/>
+      <Atom name="P"  type="P"/>
+      <Atom name="Sr"  type="S RNA"/>
+      <Atom name="A"  type="A Base"/>
+    </Residue>
+    <Residue name="C">
+      <AllowPatch name="Initial"/>
+      <Atom name="P"  type="P"/>
+      <Atom name="Sr"  type="S RNA"/>
+      <Atom name="C"  type="C Base"/>
+    </Residue>
+    <Residue name="U">
+      <AllowPatch name="Initial"/>
+      <Atom name="P"  type="P"/>
+      <Atom name="Sr"  type="S RNA"/>
+      <Atom name="U"  type="U Base"/>
+    </Residue>
+    <Residue name="G">
+      <AllowPatch name="Initial"/>
+      <Atom name="P"  type="P"/>
+      <Atom name="Sr"  type="S RNA"/>
+      <Atom name="G"  type="G Base"/>
+    </Residue>
+  </Residues>
+  <Patches>
+    <Patch name="Initial">
+      <RemoveAtom name="P"/>
+    </Patch>
+  </Patches>
+</ForceField>

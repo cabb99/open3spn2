@@ -1,0 +1,48 @@
+Name,DNA type,Folder,Trajectory,Log,Energy term,periodic size,Platform
+
+#A DNA
+Bond,A,tests/adna/,traj.xyz,sim.log,E_bond,94.208,Reference
+Angle,A,tests/adna/,traj.xyz,sim_harmonic.log,E_angle,94.208,Reference
+Stacking,A,tests/adna/,traj.xyz,sim_stacking.log,E_angle,94.208,Reference
+Dihedral,A,tests/adna/,traj.xyz,sim.log,E_dihed,94.208,Reference
+BasePair,A,tests/adna/,traj.xyz,sim.log,ebp,94.208,Reference
+CrossStacking,A,tests/adna/,traj.xyz,sim.log,ecstk,94.208,Reference
+Exclusion,A,tests/adna/,traj.xyz,sim.log,eexcl,94.208,Reference
+Electrostatics,A,tests/adna/,traj.xyz,sim.log,dna_ecou,94.208,Reference
+#B DNA
+Bond,B,tests/bdna/,traj.xyz,sim.log,E_bond,124.384,Reference
+Angle,B,tests/bdna/,traj.xyz,sim_harmonic.log,E_angle,124.384,Reference
+Stacking,B,tests/bdna/,traj.xyz,sim_stacking.log,E_angle,124.384,Reference
+Dihedral,B,tests/bdna/,traj.xyz,sim.log,E_dihed,124.384,Reference
+BasePair,B,tests/bdna/,traj.xyz,sim.log,ebp,124.384,Reference
+CrossStacking,B,tests/bdna/,traj.xyz,sim.log,ecstk,124.384,Reference
+Exclusion,B,tests/bdna/,traj.xyz,sim.log,eexcl,124.384,Reference
+Electrostatics,B,tests/bdna/,traj.xyz,sim.log,dna_ecou,124.384,Reference
+#B-curved DNA
+Bond,B_curved,tests/bdna_curv/,traj.xyz,sim.log,E_bond,150.54,Reference
+Angle,B_curved,tests/bdna_curv/,traj.xyz,sim_harmonic.log,E_angle,150.54,Reference
+Stacking,B_curved,tests/bdna_curv/,traj.xyz,sim_stacking.log,E_angle,150.54,Reference
+Dihedral,B_curved,tests/bdna_curv/,traj.xyz,sim.log,E_dihed,150.54,Reference
+BasePair,B_curved,tests/bdna_curv/,traj.xyz,sim_stacking.log,ebp,150.54,Reference
+CrossStacking,B_curved,tests/bdna_curv/,traj.xyz,sim_stacking.log,ecstk,150.54,Reference
+Exclusion,B_curved,tests/bdna_curv/,traj.xyz,sim.log,eexcl,150.54,Reference
+Electrostatics,B_curved,tests/bdna_curv/,traj.xyz,sim.log,dna_ecou,150.54,Reference
+#CPU
+Bond,B_curved,tests/bdna_curv/,traj.xyz,sim.log,E_bond,150.54,CPU
+Angle,B_curved,tests/bdna_curv/,traj.xyz,sim_harmonic.log,E_angle,150.54,CPU
+Stacking,B_curved,tests/bdna_curv/,traj.xyz,sim_stacking.log,E_angle,150.54,CPU
+Dihedral,B_curved,tests/bdna_curv/,traj.xyz,sim.log,E_dihed,150.54,CPU
+BasePair,B_curved,tests/bdna_curv/,traj.xyz,sim_stacking.log,ebp,150.54,CPU
+CrossStacking,B_curved,tests/bdna_curv/,traj.xyz,sim_stacking.log,ecstk,150.54,CPU
+Exclusion,B_curved,tests/bdna_curv/,traj.xyz,sim.log,eexcl,150.54,CPU
+Electrostatics,B_curved,tests/bdna_curv/,traj.xyz,sim.log,dna_ecou,150.54,CPU
+#OpenCL
+Bond,B_curved,tests/bdna_curv/,traj.xyz,sim.log,E_bond,150.54,OpenCL
+Angle,B_curved,tests/bdna_curv/,traj.xyz,sim_harmonic.log,E_angle,150.54,OpenCL
+Stacking,B_curved,tests/bdna_curv/,traj.xyz,sim_stacking.log,E_angle,150.54,OpenCL
+Dihedral,B_curved,tests/bdna_curv/,traj.xyz,sim.log,E_dihed,150.54,OpenCL
+BasePair,B_curved,tests/bdna_curv/,traj.xyz,sim_stacking.log,ebp,150.54,OpenCL
+CrossStacking,B_curved,tests/bdna_curv/,traj.xyz,sim_stacking.log,ecstk,150.54,OpenCL
+Exclusion,B_curved,tests/bdna_curv/,traj.xyz,sim.log,eexcl,150.54,OpenCL
+Electrostatics,B_curved,tests/bdna_curv/,traj.xyz,sim.log,dna_ecou,150.54,OpenCL
+
