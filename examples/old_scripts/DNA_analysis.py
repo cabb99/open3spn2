@@ -27,7 +27,7 @@ fix=open3SPN2.fixPDB(args.protein)
 complex_table=open3SPN2.pdb2table(fix)
 
 #Generate a coarse-grained model of the Protein molecules
-protein_atoms=openawsem.Protein.CoarseGrain(complex_table)
+#protein_atoms=openawsem.Protein.CoarseGrain(complex_table)
 
 #Create the merged system
 pdb=simtk.openmm.app.PDBFile(args.protein)
@@ -38,12 +38,14 @@ s=forcefield.createSystem(top)
 
 #Create the DNA and Protein Objects
 dna=open3SPN2.DNA.fromCoarsePDB(args.protein)
+'''
 with open('protein.seq') as ps:
     protein_seq=ps.readlines()[0]
 protein=openawsem.Protein.fromCoarsePDB(args.protein,
                                       sequence=protein_seq)
 dna.periodic=False
 protein.periodic=False
+'''
 
 #Initialize the force dictionary
 forces={}
@@ -59,9 +61,10 @@ for force_name in open3SPN2.forces:
         force.addForce(s)
     else:
         s.addForce(force)
-    forces[force_name] = force
+    forces.update({force_name:force})
 
 #Add AWSEM forces
+'''
 ft=openawsem.functionTerms
 openAWSEMforces = dict(Connectivity=ft.basicTerms.con_term,
                        Chain=ft.basicTerms.chain_term,
@@ -90,8 +93,8 @@ for force_name in open3SPN2.protein_dna_forces:
     # print(force_name)
     force = open3SPN2.protein_dna_forces[force_name](dna,protein)
     s.addForce(force)
-    forces[force_name] = force
-
+    forces.update({force_name: force})
+    
 #Fix exclussions
 for force_name in openAWSEMforces:
     # print(force_name)
@@ -110,7 +113,70 @@ for force_name in openAWSEMforces:
     else:
         force = openAWSEMforces[force_name](protein)
     s.addForce(force)
-    forces[force_name] = force
+    forces.update({force_name: force})
+'''
+
+import simtk.openmm
+import simtk.openmm.app
+import simtk.unit
+import sys
+import numpy as np
+
+force_expression = f"""angle;
+                       angle=theta - 2*step(dot_sign)*(theta - {np.pi});
+                       dot_sign=Ex*Mx+Ey*My+Ez*Mz;
+                       theta=acos(max(-1,min(1,dot)));
+                       dot=(Cx*Dx+Cy*Dy+Cz*Dz)/Cm/Dm;
+                       Dm=sqrt(Dx^2+Dy^2+Dz^2)+1E-3;
+                       Cm=sqrt(Cx^2+Cy^2+Cz^2)+1E-3;
+                       Ex=Cy*Dz-Cz*Dy;
+                       Ey=Cz*Dx-Cx*Dz;
+                       Ez=Cx*Dy-Cy*Dx;
+                       Dx=By*Mz-Bz*My;
+                       Dy=Bz*Mx-Bx*Mz;
+                       Dz=Bx*My-By*Mx;
+                       Cx=Ay*Mz-Az*My;
+                       Cy=Az*Mx-Ax*Mz;
+                       Cz=Ax*My-Ay*Mx;
+                       Mx=(x4+x3-x2-x1)/2;
+                       My=(y4+y3-y2-y1)/2;
+                       Mz=(z4+z3-z2-z1)/2;
+                       Ax=(x2-x1);
+                       Ay=(y2-y1);
+                       Az=(z2-z1);
+                       Bx=(x4-x3);
+                       By=(y4-y3);
+                       Bz=(z4-z3);"""
+
+twist = simtk.openmm.CustomCompoundBondForce(4,force_expression)
+
+ix=np.array(dna.atoms[dna.atoms['name']=='S'].index)
+pairs=np.array([ix[:len(ix)//2],ix[len(ix)//2:][::-1]]).T
+#selected_pairs=pairs[[0,-1]]#pairs[::2]
+selected_pairs=pairs[::1]
+for a, b in zip(selected_pairs[:-1],selected_pairs[1:]):
+    #print([a[0],a[1],b[0],b[1]])
+    twist.addBond([int(a[0]),int(a[1]),int(b[0]),int(b[1])])
+twist.setForceGroup(4)    
+
+twist_bias=simtk.openmm.CustomCVForce('bias* (1 - cos(twist - twist_0))')
+twist_bias.addGlobalParameter('bias',1000000)
+twist_bias.addGlobalParameter('twist_0',0)
+twist_bias.addCollectiveVariable('twist',twist)
+twist_bias.setForceGroup(5)
+
+extra_bond=simtk.openmm.HarmonicBondForce()
+for pair in pairs[[0,-1]]:
+    d=((dna.atoms.iloc[pair[1]][['x','y','z']]-dna.atoms.iloc[pair[0]][['x','y','z']])**2).sum()**.5
+    print(pair[0],pair[-1],d/10,30)
+    extra_bond.addBond(int(pair[0]),int(pair[-1]),d/10,30)
+
+print(f's = {s}')
+#print(forces)
+s.addForce(twist_bias)
+s.addForce(extra_bond)
+forces.update({'twist':twist})
+forces.update({'twist_bias':twist_bias})
 
 #Initialize the simulation
 temperature=300 * simtk.openmm.unit.kelvin
@@ -127,7 +193,7 @@ energy_unit=simtk.openmm.unit.kilojoule_per_mole
 trajectory = md.load(args.trajectory, top=args.protein)
 
 energy_data = []
-for frame in trajectory:
+for step, frame in enumerate(trajectory):
     simulation.context.setPositions(frame.xyz[0])
     #Obtain total energy
     state = simulation.context.getState(getEnergy=True)
@@ -135,7 +201,7 @@ for frame in trajectory:
 
     # Collect energies
     energies = {}
-
+    
     for force_name, force in forces.items():
         group = force.getForceGroup()
         state = simulation.context.getState(getEnergy=True, groups=2**group)
@@ -151,7 +217,7 @@ with open(outFile, "w") as out:
     line = " ".join(["{0:<8s}".format(i) for i in ["Steps"] + list(showAll.keys())])
     print(line)
     out.write(line+"\n")
-
+    
     for step, e in enumerate(energy_data):
         line = " ".join([f"{step:<8}"] + ["{0:<8.2f}".format(i) for i in e.values()])
         print(line)
