@@ -14,4 +14,7 @@ from .dna import addNonBondedExclusions
 from .protein_dna import ExclusionProteinDNA
 from .protein_dna import ElectrostaticsProteinDNA
 from .protein_dna import AMHgoProteinDNA
-from .protein_dna import String_length_ProteinDNA
+from .protein_dna import BiasElectrostaticsProteinDNA
+from .protein_dna import proteinBasePairGroupsHarmonicBias
+from .protein_dna import proteinBasePairGroupsPosition
+from .protein_dna import StringProteinDNA 
