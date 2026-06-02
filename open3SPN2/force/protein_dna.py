@@ -1,3 +1,5 @@
+import logging
+
 import numpy as np
 
 import openmm
@@ -5,13 +7,17 @@ import openmm.unit as unit
 import pandas
 from .template import ProteinDNAForce
 from .dna import addNonBondedExclusions
+from . import force_groups
+
+logger = logging.getLogger(__name__)
+
 _af = 1 * unit.degree / unit.radian  # angle scaling factor
 _dnaResidues = ['DA', 'DC', 'DT', 'DG']
 _proteinResidues = ['IPR', 'IGL', 'NGP']
 
 class ExclusionProteinDNA(ProteinDNAForce):
     """ Protein-DNA exclusion potential"""
-    def __init__(self, dna, protein, k=1, radius_override = None, cutoff = 1.55, force_group=14):
+    def __init__(self, dna, protein, k=1, radius_override = None, cutoff = 1.55, force_group=force_groups.EXCLUSION_PROTEIN_DNA):
         self.k = k
         self.force_group = force_group
         self.radius_override = radius_override
@@ -36,7 +42,7 @@ class ExclusionProteinDNA(ProteinDNAForce):
             exclusionForce.setNonbondedMethod(exclusionForce.CutoffPeriodic)
         else:
             exclusionForce.setNonbondedMethod(exclusionForce.CutoffNonPeriodic)
-        print(f"protein dna cutoff {exclusionForce.getCutoffDistance()}")
+        logger.debug('protein-DNA exclusion cutoff %s', exclusionForce.getCutoffDistance())
         self.force = exclusionForce
 
     def defineInteraction(self):
@@ -85,7 +91,7 @@ class ExclusionProteinDNA(ProteinDNAForce):
                                 param.cutoff]
                 protein_list += [i]
             else:
-                print(f'Residue {i} not included in protein-DNA interactions')
+                logger.warning('Residue %s not included in protein-DNA interactions', i)
                 parameters = [0, .1,.1]
             atoms.loc[i, ['epsilon', 'radius', 'cutoff']] = parameters
             self.atoms = atoms
@@ -98,7 +104,7 @@ class ExclusionProteinDNA(ProteinDNAForce):
 
 class ElectrostaticsProteinDNA(ProteinDNAForce):
     """DNA-protein and protein-protein electrostatics."""
-    def __init__(self, dna, protein, k=1, ldby = 1.2 * unit.nanometer, cutoff_distance = None, force_group=15):
+    def __init__(self, dna, protein, k=1, ldby = 1.2 * unit.nanometer, cutoff_distance = None, force_group=force_groups.ELECTROSTATICS_PROTEIN_DNA):
         self.k = k
         self.force_group = force_group
         self.ldby = ldby
@@ -134,8 +140,8 @@ class ElectrostaticsProteinDNA(ProteinDNAForce):
         cutoff_nm = cutoff_distance.value_in_unit(unit.nanometer)
 
         electrostaticForce.setCutoffDistance(cutoff_nm)
-        print(f"protein dna screening length {ldby} nm")
-        print(f"protein dna cutoff {electrostaticForce.getCutoffDistance()} nm")
+        logger.debug('protein-DNA screening length %s nm', ldby)
+        logger.debug('protein-DNA electrostatic cutoff %s nm', electrostaticForce.getCutoffDistance())
         if self.periodic:
             electrostaticForce.setNonbondedMethod(electrostaticForce.CutoffPeriodic)
         else:
@@ -185,7 +191,7 @@ class ElectrostaticsProteinDNA(ProteinDNAForce):
                     protein_list += [i]
                     #print(atom.chainID, atom.resSeq, atom.resname, atom['name'], charge)
             else:
-                print(f'Residue {i} not included in protein-DNA electrostatics')
+                logger.warning('Residue %s not included in protein-DNA electrostatics', i)
                 parameters = [0]  # No charge if it is not DNA
             # print (i,parameters)
             self.force.addParticle(parameters)
