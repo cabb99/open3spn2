@@ -444,6 +444,19 @@ def addNonBondedExclusions(dna, force, OpenCLPatch=True):
         force.addExclusion(i, j)
 
 
+def select_residue_atom_indices(dna, appliedToResidues=None):
+    """System particle indices of the atoms in the requested residues.
+
+    ``appliedToResidues`` is a list of ``resSeq`` values; ``None`` selects every
+    atom. Used by the centroid-based restraint and readout forces.
+    """
+    atoms = dna.atoms
+    if appliedToResidues is None:
+        return [int(i) for i in atoms.index]
+    mask = atoms['resSeq'].isin(list(appliedToResidues))
+    return [int(i) for i in atoms.index[mask]]
+
+
 class Exclusion(DNAForce, openmm.CustomNonbondedForce):
     def __init__(self, dna, force_group = force_groups.EXCLUSION_DNA, OpenCLPatch=True):
         self.force_group = force_group
@@ -568,123 +581,3 @@ class Electrostatics(DNAForce, openmm.CustomNonbondedForce):
         # add neighbor exclusion
         addNonBondedExclusions(self.dna, self.force, self.OpenCLPatch)
 
-
-class group_constraint_by_position(DNAForce):
-    """
-    Apply a harmonic restraint on the center of mass of selected DNA atoms to keep them near (x0, y0, z0).
-    """
-
-    def __init__(self, dna, k=1*unit.kilocalorie_per_mole, 
-                 x0=10*unit.angstrom, y0=10*unit.angstrom, z0=10*unit.angstrom, 
-                 appliedToResidues=None, force_group=24, OpenCLPatch=True):
-        
-        self.force_group = force_group
-        self.k = k
-        self.x0 = x0
-        self.y0 = y0
-        self.z0 = z0
-        self.appliedToResidues = appliedToResidues
-        
-        # Call the superclass initializer
-        super().__init__(dna, OpenCLPatch=OpenCLPatch)
-
-    def reset(self):
-        # Convert parameters
-        k_constraint = self.k.value_in_unit(unit.kilojoule_per_mole)
-        x0 = self.x0.value_in_unit(unit.nanometer)
-        y0 = self.y0.value_in_unit(unit.nanometer)
-        z0 = self.z0.value_in_unit(unit.nanometer)
-
-        # Define mass-weighted sum forces
-        sum_x = openmm.CustomExternalForce("mass * x")
-        sum_y = openmm.CustomExternalForce("mass * y")
-        sum_z = openmm.CustomExternalForce("mass * z")
-
-        sum_x.addPerParticleParameter("mass")
-        sum_y.addPerParticleParameter("mass")
-        sum_z.addPerParticleParameter("mass")
-
-        # Define harmonic restraint on COM
-        harmonic = openmm.CustomCVForce(
-            f"{k_constraint} * ((sum_x - {x0})^2 + (sum_y - {y0})^2 + (sum_z - {z0})^2)"
-        )
-        harmonic.addCollectiveVariable("sum_x", sum_x)
-        harmonic.addCollectiveVariable("sum_y", sum_y)
-        harmonic.addCollectiveVariable("sum_z", sum_z)
-        harmonic.setForceGroup(self.force_group)
-
-        self.force = harmonic
-
-    def defineInteraction(self):
-        """
-        Adds selected DNA atoms to the sum_x, sum_y, sum_z forces with appropriate mass weighting.
-        """
-        total_mass = 0.0
-        for i in range(len(self.dna.atoms)):
-            #mass = self.dna.system.getParticleMass(i).value_in_unit(unit.dalton)
-            mass = 1
-
-            # Add particle to sum_x, sum_y, sum_z
-            self.force.getCollectiveVariable(0).addParticle(i, [mass])
-            self.force.getCollectiveVariable(1).addParticle(i, [mass])
-            self.force.getCollectiveVariable(2).addParticle(i, [mass])
-            
-            total_mass += mass
-
-        if total_mass == 0:
-            raise ValueError("No atoms were selected for the group constraint; check appliedToResidues.")
-
-
-class measure_from_position(DNAForce): 
-    def __init__(self, dna, x0=10*unit.angstrom, y0=10*unit.angstrom, z0=10*unit.angstrom, appliedToResidues=None, force_group=4):
-        self.force_group = force_group
-        self.x0 = x0
-        self.y0 = y0
-        self.z0 = z0
-        self.appliedToResidues = appliedToResidues
-        super().__init__(dna)
-
-    def reset(self):
-        # Convert parameters
-        x0 = self.x0.value_in_unit(unit.nanometer)
-        y0 = self.y0.value_in_unit(unit.nanometer)
-        z0 = self.z0.value_in_unit(unit.nanometer)
-
-        # Define mass-weighted sum forces
-        sum_x = openmm.CustomExternalForce("mass * x")
-        sum_y = openmm.CustomExternalForce("mass * y")
-        sum_z = openmm.CustomExternalForce("mass * z")
-
-        sum_x.addPerParticleParameter("mass")
-        sum_y.addPerParticleParameter("mass")
-        sum_z.addPerParticleParameter("mass")
-
-        # Define harmonic restraint on COM
-        harmonic = openmm.CustomCVForce(
-            f"(sum_x - {x0})^2 + (sum_y - {y0})^2 + (sum_z - {z0})^2"
-        )
-        harmonic.addCollectiveVariable("sum_x", sum_x)
-        harmonic.addCollectiveVariable("sum_y", sum_y)
-        harmonic.addCollectiveVariable("sum_z", sum_z)
-        harmonic.setForceGroup(self.force_group)
-
-        self.force = harmonic
-
-    def defineInteraction(self):
-        """
-        Adds selected DNA atoms to the sum_x, sum_y, sum_z forces with appropriate mass weighting.
-        """
-        total_mass = 0.0
-        for i in range(len(self.dna.atoms)):
-            #mass = self.dna.system.getParticleMass(i).value_in_unit(unit.dalton)\
-            mass = 1
-            
-            # Add particle to sum_x, sum_y, sum_z
-            self.force.getCollectiveVariable(0).addParticle(i, [mass])
-            self.force.getCollectiveVariable(1).addParticle(i, [mass])
-            self.force.getCollectiveVariable(2).addParticle(i, [mass])
-            
-            total_mass += mass
-
-        if total_mass == 0:
-            raise ValueError("No atoms were selected for the group constraint; check appliedToResidues.")
