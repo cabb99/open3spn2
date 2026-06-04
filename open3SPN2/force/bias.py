@@ -11,12 +11,14 @@ system) live in :mod:`open3SPN2.force.collective_variables`.
 
 import logging
 
+import numpy as np
 import openmm
 import openmm.unit as unit
 
 from .template import DNAForce, ProteinDNAForce
 from .dna import select_residue_atom_indices
-from .protein_dna import ElectrostaticsProteinDNA, select_string_groups
+from .protein_dna import (ElectrostaticsProteinDNA, select_string_groups,
+                          _proteinResidues, _dnaResidues)
 from . import force_groups
 
 logger = logging.getLogger(__name__)
@@ -214,3 +216,63 @@ class BasePairProteinHarmonicBias(ProteinDNAForce):
 
     def defineInteraction(self):
         pass
+
+
+class AMHgoProteinDNA(ProteinDNAForce):
+    """Structure-based (AMH-Go) contact potential between a protein and DNA. (Xinyu)
+
+    Adds a Gaussian well at each native contact listed in ``contact_file``
+    (columns: protein resSeq, DNA resSeq, native distance in angstrom, optional
+    weight) between a protein CB (or CA) atom and a DNA base atom. The well depth
+    at the native distance is ``k_3spn2 * k_amhgo_PD * gamma_ij``.
+    """
+    def __init__(self, dna, protein, chain_protein='A', chain_DNA='B', k_amhgo_PD=1*unit.kilocalorie_per_mole,
+                 k_3spn2=1.0, sigma_sq=0.05*unit.nanometers**2, aaweight=False, globalct=True, cutoff=1.8,
+                 contact_file="contact_protein_DNA.dat", force_group=force_groups.AMH_GO):
+        self.force_group = force_group
+        self.k_amhgo_PD = k_amhgo_PD
+        self.k_3spn2 = k_3spn2
+        self.sigma_sq = sigma_sq
+        self.chain_protein = chain_protein
+        self.chain_DNA = chain_DNA
+        self.aaweight = aaweight
+        self.cutoff = cutoff
+        self.globalct = globalct
+        self.contact_file = contact_file
+        super().__init__(dna, protein)
+
+    def reset(self):
+        cutoff = self.cutoff
+        k_3spn2 = self.k_3spn2
+        if self.globalct:
+            amhgoForce = openmm.CustomBondForce(f"-k_amhgo_PD*gamma_ij*exp(-(r-r_ijN)^2/(2*sigma_sq))*step({cutoff}-r)")
+        else:
+            amhgoForce = openmm.CustomBondForce(f"-k_amhgo_PD*gamma_ij*exp(-(r-r_ijN)^2/(2*sigma_sq))*step(r_ijN+{cutoff}-r)")
+        amhgoForce.addGlobalParameter("k_amhgo_PD", k_3spn2 * self.k_amhgo_PD)
+        amhgoForce.addGlobalParameter("sigma_sq", self.sigma_sq)
+        amhgoForce.addPerBondParameter("gamma_ij")
+        amhgoForce.addPerBondParameter("r_ijN")
+        amhgoForce.setUsesPeriodicBoundaryConditions(self.periodic)
+        amhgoForce.setForceGroup(self.force_group)  # one cutoff per force group
+        self.force = amhgoForce
+
+    def defineInteraction(self):
+        atoms = self.dna.atoms.copy()
+        atoms['index'] = atoms.index
+        atoms.index = zip(atoms['chainID'], atoms['resSeq'], atoms['name'])
+
+        contact_list = np.loadtxt(self.contact_file)
+        for i in range(len(contact_list)):
+            if self.aaweight:
+                gamma_ij = contact_list[i][3]
+            else:
+                gamma_ij = 1.0
+            if (self.chain_protein, int(contact_list[i][0]), 'CB') in atoms.index:
+                CB_protein = atoms[(atoms['chainID'] == self.chain_protein) & (atoms['resSeq'] == int(contact_list[i][0])) & (atoms['name'] == 'CB') & atoms['resname'].isin(_proteinResidues)].copy()
+            else:
+                CB_protein = atoms[(atoms['chainID'] == self.chain_protein) & (atoms['resSeq'] == int(contact_list[i][0])) & (atoms['name'] == 'CA') & atoms['resname'].isin(_proteinResidues)].copy()
+            base_DNA = atoms[(atoms['chainID'] == self.chain_DNA) & (atoms['resSeq'] == int(contact_list[i][1])) & (atoms['name'].isin(['A', 'T', 'G', 'C'])) & atoms['resname'].isin(_dnaResidues)].copy()
+            r_ijN = contact_list[i][2] / 10.0 * unit.nanometers
+            self.force.addBond(int(CB_protein['index'].values[0]), int(base_DNA['index'].values[0]), [gamma_ij, r_ijN])
+            logger.debug('AMHgo contact: %s %s %s', int(CB_protein['index'].values[0]),
+                         int(base_DNA['index'].values[0]), [gamma_ij, r_ijN])

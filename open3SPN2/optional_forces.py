@@ -31,6 +31,7 @@ _REGISTRY = {
     "StringProteinDNA": ("open3SPN2.force.bias", "StringProteinDNA"),
     "ElectrostaticBias": ("open3SPN2.force.bias", "ElectrostaticBias"),
     "BasePairProteinHarmonicBias": ("open3SPN2.force.bias", "BasePairProteinHarmonicBias"),
+    "AMHgoProteinDNA": ("open3SPN2.force.bias", "AMHgoProteinDNA"),
     # collective-variable readouts (identity energy)
     "DistanceFromPoint": ("open3SPN2.force.collective_variables", "DistanceFromPoint"),
     "StringLength": ("open3SPN2.force.collective_variables", "StringLength"),

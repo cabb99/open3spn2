@@ -12,8 +12,8 @@ import open3SPN2.force.collective_variables as cv
 
 _EXPECTED = {
     "PositionRestraint", "StringProteinDNA", "ElectrostaticBias",
-    "BasePairProteinHarmonicBias", "DistanceFromPoint", "StringLength",
-    "BasePairProteinPosition",
+    "BasePairProteinHarmonicBias", "AMHgoProteinDNA", "DistanceFromPoint",
+    "StringLength", "BasePairProteinPosition",
 }
 
 

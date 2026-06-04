@@ -21,4 +21,3 @@ from .dna import addNonBondedExclusions
 
 from .protein_dna import ExclusionProteinDNA
 from .protein_dna import ElectrostaticsProteinDNA
-from .protein_dna import AMHgoProteinDNA

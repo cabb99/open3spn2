@@ -10,7 +10,8 @@ import pytest
 import openmm.unit as unit
 
 from open3SPN2.force.bias import (PositionRestraint, StringProteinDNA,
-                                  BasePairProteinHarmonicBias, ElectrostaticBias)
+                                  BasePairProteinHarmonicBias, ElectrostaticBias,
+                                  AMHgoProteinDNA)
 from open3SPN2.force.protein_dna import ElectrostaticsProteinDNA, select_string_groups
 from open3SPN2.force import force_groups as fg
 
@@ -88,3 +89,41 @@ def test_electrostatic_bias_squares_the_scaled_energy_deviation(protein_dna_harn
                              k_elec=k_elec, ldby=ldby)
     assert harness.energy(bias, fg.PROTEIN_DNA_BIAS) == pytest.approx(
         0.5 * k_ebias * ((e_elec - center) / 4.184) ** 2, rel=1e-4)
+
+
+def test_amhgo_adds_a_gaussian_well_at_each_native_contact(protein_dna_harness, tmp_path):
+    """AMHgo adds a well -k*gamma*exp(-(r - r_ijN)^2/(2*sigma^2)) per native contact within the cutoff."""
+    harness = protein_dna_harness
+    atoms = harness.dna.atoms
+    protein_residues = ['IPR', 'IGL', 'NGP']
+
+    def bonded_protein_atom(chain, res):   # CB if present else CA, exactly as AMHgo selects
+        cb = atoms[(atoms['chainID'] == chain) & (atoms['resSeq'] == res)
+                   & (atoms['name'] == 'CB') & atoms['resname'].isin(protein_residues)]
+        chosen = cb if len(cb) else atoms[(atoms['chainID'] == chain) & (atoms['resSeq'] == res)
+                                          & (atoms['name'] == 'CA') & atoms['resname'].isin(protein_residues)]
+        return int(chosen.index[0])
+
+    def base_atom(chain, res):
+        return int(atoms[(atoms['chainID'] == chain) & (atoms['resSeq'] == res)
+                         & atoms['name'].isin(['A', 'T', 'G', 'C'])].index[0])
+
+    # Two real protein(chain 3)-DNA(chain 1) interface contacts, both within cutoff.
+    contacts = [(45, 4), (48, 4)]
+    delta, sigma_sq = 0.2, 0.05
+    depth = (1 * unit.kilocalorie_per_mole).value_in_unit(unit.kilojoule_per_mole)
+
+    rows = []
+    expected = 0.0
+    for protein_res, dna_res in contacts:
+        actual = np.linalg.norm(harness.posnm[bonded_protein_atom('3', protein_res)]
+                                - harness.posnm[base_atom('1', dna_res)])
+        r_ijN = actual - delta                      # stretch the contact so the Gaussian is exercised
+        rows.append(f"{protein_res} {dna_res} {r_ijN * 10}")
+        expected += -depth * np.exp(-delta ** 2 / (2 * sigma_sq))
+    contact_file = tmp_path / "contact_protein_DNA.dat"
+    contact_file.write_text("\n".join(rows) + "\n")
+
+    force = AMHgoProteinDNA(harness.dna, harness.protein, chain_protein='3', chain_DNA='1',
+                            contact_file=str(contact_file))
+    assert harness.energy(force, fg.AMH_GO) == pytest.approx(expected, rel=1e-4)
