@@ -1,17 +1,21 @@
 import numpy as np
 import pandas
 import itertools
-
+import logging
 
 import openmm
 import openmm.unit as unit
 from .template import DNAForce
+from . import force_groups
+
+logger = logging.getLogger(__name__)
+
 _af = 1 * unit.degree / unit.radian  # angle scaling factor
 _dnaResidues = ['DA', 'DC', 'DT', 'DG']
 _complement = {'A': 'T', 'T': 'A', 'G': 'C', 'C': 'G'}
 
 class Bond(DNAForce, openmm.CustomBondForce):
-    def __init__(self, dna, force_group=6, OpenCLPatch=True):
+    def __init__(self, dna, force_group=force_groups.BOND, OpenCLPatch=True):
         self.force_group = force_group
         super().__init__(dna, OpenCLPatch=OpenCLPatch)
 
@@ -45,7 +49,7 @@ class Bond(DNAForce, openmm.CustomBondForce):
 
 class Angle(DNAForce, openmm.HarmonicAngleForce):
 
-    def __init__(self, dna, force_group=7, OpenCLPatch=True):
+    def __init__(self, dna, force_group=force_groups.ANGLE, OpenCLPatch=True):
         self.force_group = force_group
         super().__init__(dna, OpenCLPatch=OpenCLPatch)
 
@@ -62,7 +66,7 @@ class Angle(DNAForce, openmm.HarmonicAngleForce):
             self.force.addAngle(int(a['aai']), int(a['aaj']), int(a['aak']), *parameters)
 
 class Stacking(DNAForce, openmm.CustomCompoundBondForce):
-    def __init__(self, dna, force_group=8, OpenCLPatch=True):
+    def __init__(self, dna, force_group=force_groups.STACKING, OpenCLPatch=True):
         self.force_group = force_group
         super().__init__(dna, OpenCLPatch=OpenCLPatch)
 
@@ -97,7 +101,7 @@ class Stacking(DNAForce, openmm.CustomCompoundBondForce):
             self.force.addBond([a['aai'], a['aaj'], a['aak']], parameters)
 
 class Dihedral(DNAForce, openmm.CustomTorsionForce):
-    def __init__(self, dna, force_group=9, OpenCLPatch=True):
+    def __init__(self, dna, force_group=force_groups.DIHEDRAL, OpenCLPatch=True):
         self.force_group = force_group
         super().__init__(dna, OpenCLPatch=OpenCLPatch)
 
@@ -128,7 +132,7 @@ class Dihedral(DNAForce, openmm.CustomTorsionForce):
 
 
 class BasePair(DNAForce, openmm.CustomHbondForce):
-    def __init__(self, dna, force_group=10, OpenCLPatch=True):
+    def __init__(self, dna, force_group=force_groups.BASE_PAIR, OpenCLPatch=True):
         self.force_group = force_group
         super().__init__(dna, OpenCLPatch=OpenCLPatch)
 
@@ -189,7 +193,7 @@ class BasePair(DNAForce, openmm.CustomHbondForce):
             except KeyError:
                 for c, r, n in D1.index:
                     if (c, r, 'S') not in atoms.index:
-                        print(f'Residue {c}:{r} does not have a Sugar atom (S)')
+                        logger.warning('Residue %s:%s does not have a Sugar atom (S)', c, r)
                 raise KeyError
 
             try:
@@ -197,7 +201,7 @@ class BasePair(DNAForce, openmm.CustomHbondForce):
             except KeyError:
                 for c, r, n in A1.index:
                     if (c, r, 'S') not in atoms.index:
-                        print(f'Residue {c}:{r} does not have a Sugar atom (S)')
+                        logger.warning('Residue %s:%s does not have a Sugar atom (S)', c, r)
                 raise KeyError
 
             D1_list = list(D1['index'])
@@ -243,7 +247,7 @@ class BasePair(DNAForce, openmm.CustomHbondForce):
 
 
 class CrossStacking(DNAForce):
-    def __init__(self, dna, force_group=11, OpenCLPatch=True):
+    def __init__(self, dna, force_group=force_groups.CROSS_STACKING, OpenCLPatch=True):
         self.force_group = force_group
         super().__init__(dna, OpenCLPatch=OpenCLPatch)
 
@@ -440,8 +444,21 @@ def addNonBondedExclusions(dna, force, OpenCLPatch=True):
         force.addExclusion(i, j)
 
 
+def select_residue_atom_indices(dna, appliedToResidues=None):
+    """System particle indices of the atoms in the requested residues.
+
+    ``appliedToResidues`` is a list of ``resSeq`` values; ``None`` selects every
+    atom. Used by the centroid-based restraint and readout forces.
+    """
+    atoms = dna.atoms
+    if appliedToResidues is None:
+        return [int(i) for i in atoms.index]
+    mask = atoms['resSeq'].isin(list(appliedToResidues))
+    return [int(i) for i in atoms.index[mask]]
+
+
 class Exclusion(DNAForce, openmm.CustomNonbondedForce):
-    def __init__(self, dna, force_group = 12, OpenCLPatch=True):
+    def __init__(self, dna, force_group = force_groups.EXCLUSION_DNA, OpenCLPatch=True):
         self.force_group = force_group
         super().__init__(dna, OpenCLPatch=OpenCLPatch)
 
@@ -487,10 +504,12 @@ class Exclusion(DNAForce, openmm.CustomNonbondedForce):
 
 
 class Electrostatics(DNAForce, openmm.CustomNonbondedForce):
-    def __init__(self, dna, force_group=13, temperature=300*unit.kelvin, salt_concentration=100*unit.millimolar, OpenCLPatch=True):
+    def __init__(self, dna, force_group=force_groups.ELECTROSTATICS_DNA, temperature=300*unit.kelvin, salt_concentration=100*unit.millimolar, ldby = None, cutoff_distance = None, OpenCLPatch=True):
         self.force_group = force_group
         self.T = temperature
         self.C = salt_concentration
+        self.ldby = ldby
+        self.cutoff_distance = cutoff_distance
         super().__init__(dna, OpenCLPatch=OpenCLPatch)
 
     def reset(self):
@@ -506,11 +525,23 @@ class Electrostatics(DNAForce, openmm.CustomNonbondedForce):
         ec = 1.60217653E-19 * unit.coulomb  # proton charge
         pv = 8.8541878176E-12 * unit.farad / unit.meter  # dielectric permittivity of vacuum
 
-        ldby = np.sqrt(dielectric * pv * kb * T / (2.0 * Na * ec ** 2 * C))
+        if self.ldby is None:
+            ldby = np.sqrt(dielectric * pv * kb * T / (2.0 * Na * ec ** 2 * C))
+        else:
+            ldby = self.ldby
+        
         ldby = ldby.in_units_of(unit.nanometer)
+
+        if self.cutoff_distance == None:
+            cutoff_distance = 5 * unit.nanometer # for backward compatibility
+        else:
+            cutoff_distance = self.cutoff_distance
+
+        cutoff_nm = cutoff_distance.value_in_unit(unit.nanometer)
+
         denominator = 4 * np.pi * pv * dielectric / (Na * ec ** 2)
         denominator = denominator.in_units_of(unit.kilocalorie_per_mole**-1 * unit.nanometer**-1)
-        #print(ldby, denominator)
+        logger.debug('DNA electrostatics: ldby=%s, denominator=%s', ldby, denominator)
 
         electrostaticForce = openmm.CustomNonbondedForce("""energy;
                                                                 energy=q1*q2*exp(-r/dh_length)/denominator/r;""")
@@ -518,7 +549,9 @@ class Electrostatics(DNAForce, openmm.CustomNonbondedForce):
         electrostaticForce.addGlobalParameter('dh_length', ldby)
         electrostaticForce.addGlobalParameter('denominator', denominator)
 
-        electrostaticForce.setCutoffDistance(5)
+        electrostaticForce.setCutoffDistance(cutoff_nm)
+        logger.debug('DNA screening length %s nm', ldby)
+        logger.debug('DNA electrostatic cutoff %s nm', electrostaticForce.getCutoffDistance())
         if self.periodic:
             electrostaticForce.setNonbondedMethod(electrostaticForce.CutoffPeriodic)
         else:
@@ -547,3 +580,4 @@ class Electrostatics(DNAForce, openmm.CustomNonbondedForce):
 
         # add neighbor exclusion
         addNonBondedExclusions(self.dna, self.force, self.OpenCLPatch)
+
