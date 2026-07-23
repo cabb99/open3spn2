@@ -138,6 +138,56 @@ The forces and system in open3SPN can be treated as forces and systems from open
 .. ----------------------
 
 
+Alchemical base transformations
+-------------------------------
+Because every nucleotide in 3SPN.2 is represented by the same three beads (phosphate, sugar and a
+single base bead), one base can be transformed into another by changing only the potential
+parameters. An ``open3SPN2.AlchemicalTransformation`` builds the single-topology hybrid Hamiltonian
+``U(lambda) = (1 - lambda) * U_initial + lambda * U_target`` (0 gives the initial base, 1 the target)
+by adding two lambda-scaled copies of the DNA forces -- one for the initial identities and one for the
+target (``DNA.create_mutant``). This is useful for free-energy calculations of base identity, e.g.
+thermodynamic integration or FEP/BAR.
+
+.. code:: python
+
+    import open3SPN2
+
+    seq = 'ATACAAAGGTGCGAGGTTTCTATGCTCCCACG'
+    dna = open3SPN2.DNA.fromSequence(seq, dna_type='B_curved', output_pdb='initial.pdb')
+    dna.periodic = False
+
+    # Transform residue 5 of chain A into a guanine. (A whole Watson-Crick pair can be co-mutated by
+    # listing both residues, e.g. [('A', 5, 'G'), ('B', 27, 'C')].)
+    transformation = open3SPN2.AlchemicalTransformation(dna, [('A', 5, 'G')])
+    # dna.create_mutant([('A', 5, 'G')]) returns the target-base DNA on its own, if you need it.
+
+    s = open3SPN2.System(dna, periodicBox=None)
+    transformation.add_forces(s)          # instead of s.add3SPN2forces()
+    s.initializeMD()
+    context = s.simulation.context
+
+    # Endpoints: lambda = 0 is the initial base, lambda = 1 is the target base.
+    for lam in [0.0, 0.5, 1.0]:
+        transformation.set_lambda(context, lam)
+        print(lam, context.getState(getEnergy=True).getPotentialEnergy())
+
+Because the coupling is linear, ``dE/dlambda`` is exact and independent of ``lambda`` at a fixed
+configuration; ``transformation.energy_derivative(context)`` returns it (in kJ/mol) for use as the
+thermodynamic-integration integrand, and includes the base-pairing and cross-stacking contributions.
+
+.. code:: python
+
+    import numpy as np
+
+    windows = np.linspace(0, 1, 11)
+    dGdl = []
+    for lam in windows:
+        transformation.set_lambda(context, lam)
+        s.simulation.step(1000)               # sample at this lambda window
+        dGdl.append(transformation.energy_derivative(context))
+    delta_G = np.trapezoid(dGdl, windows)
+
+
 Protein DNA system
 ------------------
 You can find this example on the `examples/Protein_DNA <https://github.com/cabb99/open3spn2/tree/master/examples/Protein_DNA>`_ folder. For this example you need to download the structure of the Lambda repressor-operator complex `1mlb.pdb <https://www.rcsb.org/structure/1LMB>`_. You will also need to have installed the `openAWSEM <https://github.com/npschafer/openawsem>`_ library.

@@ -27,6 +27,11 @@ class DNAForce(object):
             else:
                 raise AttributeError()
 
+    def addForce(self, system):
+        """Add this force's OpenMM force to `system`. Forces that manage several OpenMM forces
+        (e.g. BasePair, CrossStacking) override this to add all of them."""
+        system.addForce(self.force)
+
     def computeEnergy(self, system, trajectory):
         # Parse trajectory
         traj = parse_xyz('Tests/adna/traj.xyz')

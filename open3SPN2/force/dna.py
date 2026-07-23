@@ -9,9 +9,16 @@ from .template import DNAForce
 _af = 1 * unit.degree / unit.radian  # angle scaling factor
 _dnaResidues = ['DA', 'DC', 'DT', 'DG']
 _complement = {'A': 'T', 'T': 'A', 'G': 'C', 'C': 'G'}
+# Base-type codes for the in-expression base-pair mask in Exclusion. Complementary pairs are exactly
+# the pairs whose codes sum to 5 (A+T = 1+4, G+C = 2+3); no other pair of codes (0 for P, S, non-DNA)
+# sums to 5, so a single window on the sum masks exactly the base-pair exclusions.
+_base_type = {'A': 1, 'G': 2, 'C': 3, 'T': 4}
+
 
 class Bond(DNAForce, openmm.CustomBondForce):
-    def __init__(self, dna, force_group=6, OpenCLPatch=True):
+    def __init__(self, dna, k=1, k_name=None, force_group=6, OpenCLPatch=True):
+        self.k = k
+        self.k_name = k_name or 'k_bond'
         self.force_group = force_group
         super().__init__(dna, OpenCLPatch=OpenCLPatch)
 
@@ -25,32 +32,39 @@ class Bond(DNAForce, openmm.CustomBondForce):
         return [self.perInteractionParameters, self.GlobalParameters]
 
     def reset(self):
-        bondForce = openmm.CustomBondForce("Kb2*(r-r0)^2+Kb3*(r-r0)^3+Kb4*(r-r0)^4")
+        bondForce = openmm.CustomBondForce(f"{self.k_name}*(Kb2*(r-r0)^2+Kb3*(r-r0)^3+Kb4*(r-r0)^4)")
         bondForce.addPerBondParameter('r0')
         bondForce.addPerBondParameter('Kb2')
         bondForce.addPerBondParameter('Kb3')
         bondForce.addPerBondParameter('Kb4')
+        bondForce.addGlobalParameter(self.k_name, self.k)
         bondForce.setUsesPeriodicBoundaryConditions(self.periodic)
         bondForce.setForceGroup(self.force_group)
         self.force = bondForce
 
     def defineInteraction(self):
         for i, b in self.dna.bonds.iterrows():
-            # Units converted from
             parameters = [b['r0'],
                           b['Kb2'],
                           b['Kb3'],
                           b['Kb4']]
             self.force.addBond(int(b['aai']), int(b['aaj']), parameters)
 
-class Angle(DNAForce, openmm.HarmonicAngleForce):
 
-    def __init__(self, dna, force_group=7, OpenCLPatch=True):
+class Angle(DNAForce, openmm.CustomAngleForce):
+    def __init__(self, dna, k=1, k_name=None, force_group=7, OpenCLPatch=True):
+        self.k = k
+        self.k_name = k_name or 'k_angle'
         self.force_group = force_group
         super().__init__(dna, OpenCLPatch=OpenCLPatch)
 
     def reset(self):
-        angleForce = openmm.HarmonicAngleForce()
+        # A CustomAngleForce (rather than HarmonicAngleForce) so it can carry the k multiplier;
+        # with the per-angle stiffness k = 2*epsilon this is 0.5*k*(theta-t0)^2 = epsilon*(theta-t0)^2.
+        angleForce = openmm.CustomAngleForce(f"{self.k_name}*0.5*k*(theta-t0)^2")
+        angleForce.addPerAngleParameter('t0')
+        angleForce.addPerAngleParameter('k')
+        angleForce.addGlobalParameter(self.k_name, self.k)
         angleForce.setUsesPeriodicBoundaryConditions(self.periodic)
         angleForce.setForceGroup(self.force_group)
         self.force = angleForce
@@ -59,15 +73,18 @@ class Angle(DNAForce, openmm.HarmonicAngleForce):
         for i, a in self.dna.angles.iterrows():
             parameters = [a['t0'] * _af,
                           a['epsilon'] * 2]
-            self.force.addAngle(int(a['aai']), int(a['aaj']), int(a['aak']), *parameters)
+            self.force.addAngle(int(a['aai']), int(a['aaj']), int(a['aak']), parameters)
+
 
 class Stacking(DNAForce, openmm.CustomCompoundBondForce):
-    def __init__(self, dna, force_group=8, OpenCLPatch=True):
+    def __init__(self, dna, k=1, k_name=None, force_group=8, OpenCLPatch=True):
+        self.k = k
+        self.k_name = k_name or 'k_stacking'
         self.force_group = force_group
         super().__init__(dna, OpenCLPatch=OpenCLPatch)
 
     def reset(self):
-        stackingForce = openmm.CustomCompoundBondForce(3, """energy;
+        stackingForce = openmm.CustomCompoundBondForce(3, f"""{self.k_name}*energy;
                         energy=rep+f2*attr;
                         rep=epsilon*(1-exp(-alpha*(dr)))^2*step(-dr);
                         attr=epsilon*(1-exp(-alpha*(dr)))^2*step(dr)-epsilon;
@@ -84,6 +101,7 @@ class Stacking(DNAForce, openmm.CustomCompoundBondForce):
         stackingForce.addPerBondParameter('alpha')
         stackingForce.addPerBondParameter('rng')
         stackingForce.addGlobalParameter('pi', np.pi)
+        stackingForce.addGlobalParameter(self.k_name, self.k)
         stackingForce.setForceGroup(self.force_group)
         self.force = stackingForce
 
@@ -96,24 +114,27 @@ class Stacking(DNAForce, openmm.CustomCompoundBondForce):
                           a['rng']]
             self.force.addBond([a['aai'], a['aaj'], a['aak']], parameters)
 
+
 class Dihedral(DNAForce, openmm.CustomTorsionForce):
-    def __init__(self, dna, force_group=9, OpenCLPatch=True):
+    def __init__(self, dna, k=1, k_name=None, force_group=9, OpenCLPatch=True):
+        self.k = k
+        self.k_name = k_name or 'k_dihedral'
         self.force_group = force_group
         super().__init__(dna, OpenCLPatch=OpenCLPatch)
 
     def reset(self):
-        dihedralForce = openmm.CustomTorsionForce("""energy;
+        dihedralForce = openmm.CustomTorsionForce(f"""{self.k_name}*energy;
                         energy = K_periodic*(1-cs)-K_gaussian*exp(-dt_periodic^2/2/sigma^2);
                         cs = cos(dt);
                         dt_periodic = dt-floor((dt+pi)/(2*pi))*(2*pi);
                         dt = theta-t0""")
-        # dihedralForce=simtk.openmm.CustomTorsionForce("theta/60.")
         dihedralForce.setUsesPeriodicBoundaryConditions(self.periodic)
         dihedralForce.addPerTorsionParameter('K_periodic')
         dihedralForce.addPerTorsionParameter('K_gaussian')
         dihedralForce.addPerTorsionParameter('sigma')
         dihedralForce.addPerTorsionParameter('t0')
         dihedralForce.addGlobalParameter('pi', np.pi)
+        dihedralForce.addGlobalParameter(self.k_name, self.k)
         dihedralForce.setForceGroup(self.force_group)
         self.force = dihedralForce
 
@@ -128,13 +149,15 @@ class Dihedral(DNAForce, openmm.CustomTorsionForce):
 
 
 class BasePair(DNAForce, openmm.CustomHbondForce):
-    def __init__(self, dna, force_group=10, OpenCLPatch=True):
+    def __init__(self, dna, k=1, k_name=None, force_group=10, OpenCLPatch=True):
+        self.k = k
+        self.k_name = k_name or 'k_basepair'
         self.force_group = force_group
         super().__init__(dna, OpenCLPatch=OpenCLPatch)
 
     def reset(self):
         def basePairForce():
-            pairForce = openmm.CustomHbondForce('''energy;
+            pairForce = openmm.CustomHbondForce(f'''{self.k_name}*energy;
                         energy=rep+1/2*(1+cos(dphi))*fdt1*fdt2*attr;
                         rep  = epsilon*(1-exp(-alpha*dr))^2*(1-step(dr));
                         attr = epsilon*(1-exp(-alpha*dr))^2*step(dr)-epsilon;
@@ -163,6 +186,7 @@ class BasePair(DNAForce, openmm.CustomHbondForce):
             pairForce.addPerDonorParameter('epsilon')
             pairForce.addPerDonorParameter('alpha')
             pairForce.addGlobalParameter('pi', np.pi)
+            pairForce.addGlobalParameter(self.k_name, self.k)
             self.force = pairForce
             pairForce.setForceGroup(self.force_group)
             return pairForce
@@ -219,10 +243,8 @@ class BasePair(DNAForce, openmm.CustomHbondForce):
             # it doesn't seem to break things
             for d1, d2 in zip(D1_list, D2_list):
                 self.forces[i].addDonor(d1, d2, -1, parameters)
-                #print(d1, d2, d2, parameters)
             for a1, a2 in zip(A1_list, A2_list):
                 self.forces[i].addAcceptor(a1, a2, -1)
-                #print(a1, a2, a2)
             # Exclude interactions
             D1['donor_id'] = [i for i in range(len(D1))]
             A1['aceptor_id'] = [i for i in range(len(A1))]
@@ -235,7 +257,6 @@ class BasePair(DNAForce, openmm.CustomHbondForce):
                 # This change has no noticeable effect
                 if (atom_a.chainID == atom_b.chainID) and (abs(atom_a.resSeq - atom_b.resSeq) <= 2):
                     self.forces[i].addExclusion(atom_a['donor_id'], atom_b['aceptor_id'])
-                    #print(_i, _j)
 
     def addForce(self, system):
         for f in self.forces:
@@ -243,13 +264,15 @@ class BasePair(DNAForce, openmm.CustomHbondForce):
 
 
 class CrossStacking(DNAForce):
-    def __init__(self, dna, force_group=11, OpenCLPatch=True):
+    def __init__(self, dna, k=1, k_name=None, force_group=11, OpenCLPatch=True):
+        self.k = k
+        self.k_name = k_name or 'k_crossstacking'
         self.force_group = force_group
         super().__init__(dna, OpenCLPatch=OpenCLPatch)
 
     def reset(self):
         def crossStackingForce(parametersOnDonor=False):
-            crossForce = openmm.CustomHbondForce(f'''energy;
+            crossForce = openmm.CustomHbondForce(f'''{self.k_name}*energy;
                          energy   = fdt3*fdtCS*attr/2;
                          attr     = epsilon*(1-exp(-alpha*dr))^2*step(dr)-epsilon;
                          fdt3     = max(f1*pair0t3,pair1t3);
@@ -282,6 +305,7 @@ class CrossStacking(DNAForce):
                 else:
                     crossForce.addPerAcceptorParameter(p)
             crossForce.addGlobalParameter('pi', np.pi)
+            crossForce.addGlobalParameter(self.k_name, self.k)
             crossForce.setForceGroup(self.force_group)
             return crossForce
 
@@ -349,7 +373,6 @@ class CrossStacking(DNAForce):
                           param['Sigma_2']]
             c1.addDonor(d1, d2, d3)
             c2.addAcceptor(d1, d2, d3, parameters)
-            # print("Donor", d1t, d1, d2, d3)
             donors[d1t] += [d1]
 
         aceptors = {i: [] for i in ['A', 'T', 'G', 'C']}
@@ -369,7 +392,6 @@ class CrossStacking(DNAForce):
                           param['Sigma_1']]
             c1.addAcceptor(a1, a2, a3, parameters)
             c2.addDonor(a1, a2, a3)
-            # print("Aceptor", a1t, a1, a2, a3)
             aceptors[_complement[a1t]] += [a1]
 
         # Exclusions
@@ -404,7 +426,12 @@ class CrossStacking(DNAForce):
             assert fg == c2.getForceGroup()
         return fg
 
+
 def addNonBondedExclusions(dna, force, OpenCLPatch=True):
+    """Adds the identity-independent intra-residue and neighboring-residue exclusions that every
+    CustomNonbondedForce shares. Complementary base-pair exclusions are NOT added here -- Exclusion
+    masks them inside its energy expression -- so all CustomNonbondedForce keep one identical
+    exclusion list (required on the CPU/GPU platforms) and mix cleanly with other force fields."""
     is_dna = dna.atoms['resname'].isin(_dnaResidues)
     atoms = dna.atoms.copy()
     selection = atoms[is_dna].sort_index()
@@ -425,33 +452,30 @@ def addNonBondedExclusions(dna, force, OpenCLPatch=True):
         except KeyError:
             continue
 
-    exclusions_bp = []
-    if OpenCLPatch:
-        # Add basepair exclusions
-        for key in _complement:
-            selection_N = atoms[is_dna & (atoms['name'] == key)]
-            selection_C = atoms[is_dna & (atoms['name'] == _complement[key])]
-            for i, j in itertools.product(selection_N.index, selection_C.index):
-                if i > j:
-                    exclusions_bp += [(j, i)]
-
-    exclusions = list(set(exclusions+exclusions_bp))
-    for i, j in exclusions:
+    for i, j in set(exclusions):
         force.addExclusion(i, j)
 
 
 class Exclusion(DNAForce, openmm.CustomNonbondedForce):
-    def __init__(self, dna, force_group = 12, OpenCLPatch=True):
+    def __init__(self, dna, k=1, k_name=None, force_group=12, OpenCLPatch=True):
+        self.k = k
+        self.k_name = k_name or 'k_exclusion'
         self.force_group = force_group
         super().__init__(dna, OpenCLPatch=OpenCLPatch)
 
     def reset(self):
-        exclusionForce = openmm.CustomNonbondedForce("""energy;
-                         energy=(epsilon*((sigma/r)^12-2*(sigma/r)^6)+epsilon)*step(sigma-r);
+        # Complementary base pairs are excluded in-expression via `mask` (0 when bt1+bt2 == 5), so a
+        # masked pair contributes 0 energy and 0 force -- identical to an addExclusion, but without
+        # putting the base-pair exclusions into the shared exclusion list.
+        exclusionForce = openmm.CustomNonbondedForce(f"""{self.k_name}*mask*core;
+                         core=(epsilon*((sigma/r)^12-2*(sigma/r)^6)+epsilon)*step(sigma-r);
+                         mask=1-step(bt1+bt2-4.5)*step(5.5-bt1-bt2);
                          sigma=0.5*(sigma1+sigma2);
                          epsilon=sqrt(epsilon1*epsilon2)""")
         exclusionForce.addPerParticleParameter('epsilon')
         exclusionForce.addPerParticleParameter('sigma')
+        exclusionForce.addPerParticleParameter('bt')
+        exclusionForce.addGlobalParameter(self.k_name, self.k)
         exclusionForce.setCutoffDistance(1.8)
         exclusionForce.setForceGroup(self.force_group)  # There can not be multiple cutoff distance on the same force group
         if self.periodic:
@@ -475,11 +499,9 @@ class Exclusion(DNAForce, openmm.CustomNonbondedForce):
         for i, atom in atoms.iterrows():
             if atom.is_dna:
                 param = particle_definition.loc[atom['name']]
-                parameters = [param.epsilon,
-                              param.radius]
+                parameters = [param.epsilon, param.radius, _base_type.get(atom['name'], 0)]
             else:
-                parameters = [0, .1]  # Null energy and some radius)
-            # print(i, parameters)
+                parameters = [0, .1, 0]  # Null energy, some radius, non-base
             self.force.addParticle(parameters)
 
         # addExclusions
@@ -487,7 +509,9 @@ class Exclusion(DNAForce, openmm.CustomNonbondedForce):
 
 
 class Electrostatics(DNAForce, openmm.CustomNonbondedForce):
-    def __init__(self, dna, force_group=13, temperature=300*unit.kelvin, salt_concentration=100*unit.millimolar, OpenCLPatch=True):
+    def __init__(self, dna, k=1, k_name=None, force_group=13, temperature=300*unit.kelvin, salt_concentration=100*unit.millimolar, OpenCLPatch=True):
+        self.k = k
+        self.k_name = k_name or 'k_electrostatics'
         self.force_group = force_group
         self.T = temperature
         self.C = salt_concentration
@@ -512,11 +536,12 @@ class Electrostatics(DNAForce, openmm.CustomNonbondedForce):
         denominator = denominator.in_units_of(unit.kilocalorie_per_mole**-1 * unit.nanometer**-1)
         #print(ldby, denominator)
 
-        electrostaticForce = openmm.CustomNonbondedForce("""energy;
+        electrostaticForce = openmm.CustomNonbondedForce(f"""{self.k_name}*energy;
                                                                 energy=q1*q2*exp(-r/dh_length)/denominator/r;""")
         electrostaticForce.addPerParticleParameter('q')
         electrostaticForce.addGlobalParameter('dh_length', ldby)
         electrostaticForce.addGlobalParameter('denominator', denominator)
+        electrostaticForce.addGlobalParameter(self.k_name, self.k)
 
         electrostaticForce.setCutoffDistance(5)
         if self.periodic:

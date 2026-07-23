@@ -205,6 +205,7 @@ class DNA(object):
         except AttributeError:
             self.parseConfigurationFile()
 
+        self.template_from_X3DNA = template_from_X3DNA
         DNAtype = self.DNAtype
         if DNAtype not in self.angle_definition['DNA'].unique():
             raise DNATypeError(self)
@@ -366,6 +367,50 @@ class DNA(object):
 
             d = np.arctan2(y, x) / np.pi * 180
             self.dihedrals['t0'] = -d - 180
+
+    def create_mutant(self, mutations):
+        """Returns a new DNA identical to this one but with the given base identities.
+
+        Single-topology: the mutant keeps the same beads and coordinates, only the base labels and
+        the potential parameters change. `mutations` is an iterable of ``(chainID, resSeq, target)``
+        (dicts with those keys or a DataFrame are also accepted) with ``target`` in {A, T, G, C}.
+        Building the mutant is the general operation the alchemical transformation uses to obtain its
+        target state, but it is also useful on its own (e.g. to score a sequence variant)."""
+        element = {'A': 'N', 'T': 'S', 'G': 'C', 'C': 'O'}
+        base_names = ['A', 'T', 'G', 'C']
+
+        if isinstance(mutations, pandas.DataFrame):
+            mutations = mutations[['chainID', 'resSeq', 'target']]
+        else:
+            mutations = pandas.DataFrame([(m['chainID'], m['resSeq'], m['target']) if isinstance(m, dict)
+                                          else (m[0], m[1], m[2]) for m in mutations],
+                                         columns=['chainID', 'resSeq', 'target'])
+        for target in mutations['target']:
+            if target not in base_names:
+                raise ValueError(f"Mutation target '{target}' is not one of {base_names}")
+
+        mutant = DNA(periodic=self.periodic)
+        mutant.atoms = self.atoms.copy()
+        mutant.DNAtype = self.DNAtype
+        mutant.config = self.config
+        for attr in ['particle_definition', 'bond_definition', 'angle_definition',
+                     'dihedral_definition', 'stacking_definition', 'pair_definition', 'cross_definition']:
+            setattr(mutant, attr, getattr(self, attr))
+
+        for _, mut in mutations.iterrows():
+            residue = (mutant.atoms['chainID'] == mut['chainID']) & (mutant.atoms['resSeq'] == mut['resSeq'])
+            base_bead = residue & mutant.atoms['name'].isin(base_names)
+            if int(base_bead.sum()) != 1:
+                raise ValueError(f"Mutation {mut['chainID']}:{mut['resSeq']} matched {int(base_bead.sum())} "
+                                 f"base beads (expected exactly 1)")
+            # The residue name is shared by all three beads (read by the angle base-matching).
+            mutant.atoms.loc[residue, 'resname'] = 'D' + mut['target']
+            mutant.atoms.loc[base_bead, 'name'] = mut['target']
+            mutant.atoms.loc[base_bead, 'type'] = mut['target']
+            mutant.atoms.loc[base_bead, 'element'] = element[mut['target']]
+
+        mutant.computeTopology(template_from_X3DNA=getattr(self, 'template_from_X3DNA', False))
+        return mutant
 
     def writePDB(self, pdb_file='clean.pdb'):
         # Compute element fields
@@ -606,10 +651,7 @@ class System(openmm.System):
             if verbose:
                 print(force_name)
             force = forces[force_name](self.dna)
-            if force_name in ['BasePair', 'CrossStacking']:
-                force.addForce(self)
-            else:
-                self.addForce(force)
+            force.addForce(self)
             self.forces.update({force_name: force})
 
     def addProteinDNAforces(self, verbose=False):
@@ -664,6 +706,7 @@ class System(openmm.System):
             energies += [energy]
         return np.array(energies)
 
+
 # List forces
 forces = dict(Bond=Bond,
               Angle=Angle,
@@ -676,8 +719,6 @@ forces = dict(Bond=Bond,
 
 protein_dna_forces=dict(ExclusionProteinDNA=ExclusionProteinDNA,
                         ElectrostaticsProteinDNA=ElectrostaticsProteinDNA)
-
-
 
 
 
