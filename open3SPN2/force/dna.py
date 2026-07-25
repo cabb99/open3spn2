@@ -507,6 +507,65 @@ class Exclusion(DNAForce, openmm.CustomNonbondedForce):
         # addExclusions
         addNonBondedExclusions(self.dna, self.force)
 
+class Exclusion2(DNAForce, openmm.CustomNonbondedForce):
+    def __init__(self, dna, k=1, k_name=None, force_group=12, OpenCLPatch=True):
+        self.k = k
+        self.k_name = k_name or 'k_exclusion'
+        self.force_group = force_group
+        # moves pair exclusions into the hamiltonian
+        # so we don't need to use the openmm exclusion list;
+        # also applies a minimum sequence separation of 5,
+        # consistent with the lammps 3SPN2 code
+        # (actually, we'll use 2 to be consistent with the regular Exclusion term)
+        self.min_seq_sep = 2
+        super().__init__(dna, OpenCLPatch=OpenCLPatch)
+
+    def reset(self):
+        # Complementary base pairs are excluded in-expression via `mask` (0 when bt1+bt2 == 5), so a
+        # masked pair contributes 0 energy and 0 force -- identical to an addExclusion, but without
+        # putting the base-pair exclusions into the shared exclusion list.
+        exclusionForce = openmm.CustomNonbondedForce(f"""{self.k_name}*mask*seqsep*core;
+                         core=(epsilon*((sigma/r)^12-2*(sigma/r)^6)+epsilon)*step(sigma-r);
+                         seqsep=max(1-delta(chainID1-chainID2),step(abs(resSeq2-resSeq1)-{self.min_seq_sep}));
+                         mask=1-step(bt1+bt2-4.5)*step(5.5-bt1-bt2);
+                         sigma=0.5*(sigma1+sigma2);
+                         epsilon=sqrt(epsilon1*epsilon2)""")
+        exclusionForce.addPerParticleParameter('epsilon')
+        exclusionForce.addPerParticleParameter('sigma')
+        exclusionForce.addPerParticleParameter('bt')
+        exclusionForce.addPerParticleParameter('chainID')
+        exclusionForce.addPerParticleParameter('resSeq')
+        exclusionForce.addGlobalParameter(self.k_name, self.k)
+        exclusionForce.setCutoffDistance(1.8)
+        exclusionForce.setForceGroup(self.force_group)  # There can not be multiple cutoff distance on the same force group
+        if self.periodic:
+            exclusionForce.setNonbondedMethod(exclusionForce.CutoffPeriodic)
+        else:
+            exclusionForce.setNonbondedMethod(exclusionForce.CutoffNonPeriodic)
+        self.force = exclusionForce
+
+    def defineInteraction(self):
+        # addParticles
+        particle_definition = self.dna.particle_definition[self.dna.particle_definition['DNA'] == self.dna.DNAtype]
+        particle_definition.index = particle_definition.name
+
+        # Reduces or increases the cutoff to the maximum particle radius
+        self.force.setCutoffDistance(particle_definition.radius.max())
+
+        # Select only dna atoms
+        is_dna = self.dna.atoms['resname'].isin(_dnaResidues)
+        atoms = self.dna.atoms.copy()
+        atoms['is_dna'] = is_dna
+        for i, atom in atoms.iterrows():
+            if atom.is_dna:
+                param = particle_definition.loc[atom['name']]
+                parameters = [param.epsilon, param.radius, _base_type.get(atom['name'], 0), ord(atom.chainID), int(atom.resSeq)]
+            else:
+                parameters = [0, .1, 0, 0, 0]  # Null energy, some radius, non-base, some chain, some residue
+            self.force.addParticle(parameters)
+
+        # addExclusions
+        #addNonBondedExclusions(self.dna, self.force)
 
 class Electrostatics(DNAForce, openmm.CustomNonbondedForce):
     def __init__(self, dna, k=1, k_name=None, force_group=13, temperature=300*unit.kelvin, salt_concentration=100*unit.millimolar, OpenCLPatch=True):
@@ -572,3 +631,77 @@ class Electrostatics(DNAForce, openmm.CustomNonbondedForce):
 
         # add neighbor exclusion
         addNonBondedExclusions(self.dna, self.force, self.OpenCLPatch)
+
+class Electrostatics2(DNAForce, openmm.CustomNonbondedForce):
+    def __init__(self, dna, k=1, k_name=None, force_group=13, temperature=300*unit.kelvin, salt_concentration=100*unit.millimolar, OpenCLPatch=True):
+        self.k = k
+        self.k_name = k_name or 'k_electrostatics'
+        self.force_group = force_group
+        self.T = temperature
+        self.C = salt_concentration
+        # moves pair exclusions into the hamiltonian
+        # so we don't need to use the openmm exclusion list;
+        # also applies a minimum sequence separation of 5,
+        # consistent with the lammps 3SPN2 code
+        # (actually, we'll use 2 to be consistent with the regular Exclusion term)
+        self.min_seq_sep = 2
+        super().__init__(dna, OpenCLPatch=OpenCLPatch)
+
+    def reset(self):
+        T = self.T
+        C = self.C
+        e = 249.4 - 0.788 * (T / unit.kelvin) + 7.2E-4 * (T / unit.kelvin) ** 2
+        a = 1 - 0.2551 * (C / unit.molar) + 5.151E-2 * (C / unit.molar) ** 2 - 6.889E-3 * (C / unit.molar) ** 3
+        #print(e, a)
+        dielectric = e * a
+        # Debye length
+        kb = unit.BOLTZMANN_CONSTANT_kB  # Bolztmann constant
+        Na = unit.AVOGADRO_CONSTANT_NA  # Avogadro number
+        ec = 1.60217653E-19 * unit.coulomb  # proton charge
+        pv = 8.8541878176E-12 * unit.farad / unit.meter  # dielectric permittivity of vacuum
+
+        ldby = np.sqrt(dielectric * pv * kb * T / (2.0 * Na * ec ** 2 * C))
+        ldby = ldby.in_units_of(unit.nanometer)
+        denominator = 4 * np.pi * pv * dielectric / (Na * ec ** 2)
+        denominator = denominator.in_units_of(unit.kilocalorie_per_mole**-1 * unit.nanometer**-1)
+        #print(ldby, denominator)
+
+        electrostaticForce = openmm.CustomNonbondedForce(f"""{self.k_name}*seqsep*energy;
+                                                                energy=q1*q2*exp(-r/dh_length)/denominator/r;
+                                                                seqsep=max(1-delta(chainID1-chainID2),step(abs(resSeq2-resSeq1)-{self.min_seq_sep}));""")
+        electrostaticForce.addPerParticleParameter('q')
+        electrostaticForce.addPerParticleParameter('chainID')
+        electrostaticForce.addPerParticleParameter('resSeq')
+        electrostaticForce.addGlobalParameter('dh_length', ldby)
+        electrostaticForce.addGlobalParameter('denominator', denominator)
+        electrostaticForce.addGlobalParameter(self.k_name, self.k)
+
+        electrostaticForce.setCutoffDistance(5)
+        if self.periodic:
+            electrostaticForce.setNonbondedMethod(electrostaticForce.CutoffPeriodic)
+        else:
+            electrostaticForce.setNonbondedMethod(electrostaticForce.CutoffNonPeriodic)
+        electrostaticForce.setForceGroup(self.force_group)
+        self.force = electrostaticForce
+
+    def defineInteraction(self):
+        # addParticles
+        particle_definition = self.dna.particle_definition[self.dna.particle_definition['DNA'] == self.dna.DNAtype]
+        particle_definition.index = particle_definition.name
+
+        # Select only dna atoms
+        is_dna = self.dna.atoms['resname'].isin(_dnaResidues)
+        atoms = self.dna.atoms.copy()
+        atoms['is_dna'] = is_dna
+
+        for i, atom in atoms.iterrows():
+            if atom.is_dna:
+                param = particle_definition.loc[atom['name']]
+                parameters = [param.charge, ord(atom.chainID), int(atom.resSeq)]
+            else:
+                parameters = [0, 0, 0]  # No charge if it is not DNA, some chain, some residue
+            # print (i,parameters)
+            self.force.addParticle(parameters)
+
+        # add neighbor exclusion
+        #addNonBondedExclusions(self.dna, self.force, self.OpenCLPatch)

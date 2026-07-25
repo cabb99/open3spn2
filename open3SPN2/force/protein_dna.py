@@ -83,7 +83,178 @@ class ExclusionProteinDNA(ProteinDNAForce):
         addNonBondedExclusions(self.dna, self.force)
 
 
+class ExclusionProteinDNA2(ProteinDNAForce):
+    """ Protein-DNA exclusion potential"""
+    def __init__(self, dna, protein, k=1, force_group=14):
+        self.k = k
+        self.force_group = force_group
+        # moves pair exclusions into the hamiltonian
+        # so we don't need to use the openmm exclusion list;
+        # also applies a minimum sequence separation of 5,
+        # consistent with the lammps 3SPN2 code
+        # (actually, we'll use 2 to be consistent with the regular Exclusion term)
+        self.min_seq_sep = 2
+        super().__init__(dna, protein)
+
+    def reset(self):
+        exclusionForce = openmm.CustomNonbondedForce(f"""k_exclusion_protein_DNA*seqsep*energy;
+                         energy=(4*epsilon*((sigma/r)^12-(sigma/r)^6)-offset)*step(cutoff-r);
+                         offset=4*epsilon*((sigma/cutoff)^12-(sigma/cutoff)^6);
+                         sigma=0.5*(sigma1+sigma2); 
+                         epsilon=sqrt(epsilon1*epsilon2);
+                         cutoff=sqrt(cutoff1*cutoff2);
+                         seqsep=max(1-delta(chainID1-chainID2),step(abs(resSeq2-resSeq1)-{self.min_seq_sep}))""")
+        exclusionForce.addGlobalParameter('k_exclusion_protein_DNA', self.k)
+        exclusionForce.addPerParticleParameter('epsilon')
+        exclusionForce.addPerParticleParameter('sigma')
+        exclusionForce.addPerParticleParameter('cutoff')
+        exclusionForce.addPerParticleParameter('chainID')
+        exclusionForce.addPerParticleParameter('resSeq')
+        exclusionForce.setCutoffDistance(1.55)
+        # exclusionForce.setUseLongRangeCorrection(True)
+        exclusionForce.setForceGroup(self.force_group)  # There can not be multiple cutoff distance on the same force group
+        if self.periodic:
+            exclusionForce.setNonbondedMethod(exclusionForce.CutoffPeriodic)
+        else:
+            exclusionForce.setNonbondedMethod(exclusionForce.CutoffNonPeriodic)
+        self.force = exclusionForce
+
+    def defineInteraction(self):
+
+        particle_definition = self.dna.config['Protein-DNA particles']
+        dna_particle_definition=particle_definition[(particle_definition['molecule'] == 'DNA') &
+                                                    (particle_definition['DNA'] == self.dna.DNAtype)]
+        protein_particle_definition = particle_definition[(particle_definition['molecule'] == 'Protein')]
+
+        # Merge DNA and protein particle definitions
+        particle_definition = pandas.concat([dna_particle_definition, protein_particle_definition], sort=False)
+        particle_definition.index = particle_definition.molecule + particle_definition.name
+        self.particle_definition = particle_definition
+
+        is_dna = self.dna.atoms['resname'].isin(_dnaResidues)
+        is_protein = self.dna.atoms['resname'].isin(_proteinResidues)
+        atoms = self.dna.atoms.copy()
+        atoms['is_dna'] = is_dna
+        atoms['is_protein'] = is_protein
+        atoms['epsilon']=np.nan
+        atoms['radius']=np.nan
+        atoms['cutoff'] = np.nan
+        DNA_list = []
+        protein_list = []
+        for i, atom in atoms.iterrows():
+            if atom.is_dna:
+                param = particle_definition.loc['DNA' + atom['name']]
+                parameters = [param.epsilon,
+                              param.radius,
+                              param.cutoff]
+                DNA_list += [i]
+            elif atom.is_protein:
+                param = particle_definition.loc['Protein' + atom['name']]
+                parameters = [param.epsilon,
+                              param.radius,
+                              param.cutoff]
+                protein_list += [i]
+            else:
+                print(f'Residue {i} not included in protein-DNA interactions')
+                parameters = [0, .1,.1, 0, 0] # last two numbers meaningless 
+            atoms.loc[i, ['epsilon', 'radius', 'cutoff']] = parameters
+            self.atoms = atoms
+            self.force.addParticle([parameters[0], parameters[1], parameters[2], ord(atom.chainID), int(atom.resSeq)])
+        self.force.addInteractionGroup(DNA_list, protein_list)
+
+        # addExclusions
+        #addNonBondedExclusions(self.dna, self.force)
+
+
 class ElectrostaticsProteinDNA(ProteinDNAForce):
+    """DNA-protein and protein-protein electrostatics."""
+    def __init__(self, dna, protein, k=1, force_group=15):
+        self.k = k
+        self.force_group = force_group
+        super().__init__(dna, protein)
+
+    def reset(self):
+        dielectric = 78 # e * a
+        #print(dielectric)
+        # Debye length
+        Na = unit.AVOGADRO_CONSTANT_NA  # Avogadro number
+        ec = 1.60217653E-19 * unit.coulomb  # proton charge
+        pv = 8.8541878176E-12 * unit.farad / unit.meter  # dielectric permittivity of vacuum
+
+        ldby = 1.2 * unit.nanometer # np.sqrt(dielectric * pv * kb * T / (2.0 * Na * ec ** 2 * C))
+        denominator = 4 * np.pi * pv * dielectric / (Na * ec ** 2)
+        denominator = denominator.in_units_of(unit.kilocalorie_per_mole**-1 * unit.nanometer**-1)
+        #print(ldby, denominator)
+        k = self.k
+        electrostaticForce = openmm.CustomNonbondedForce(f"""k_electro_protein_DNA*energy;
+                             energy=q1*q2*exp(-r/inter_dh_length)/inter_denominator/r;""")
+        electrostaticForce.addPerParticleParameter('q')
+        electrostaticForce.addGlobalParameter('k_electro_protein_DNA', k)
+        electrostaticForce.addGlobalParameter('inter_dh_length', ldby)
+        electrostaticForce.addGlobalParameter('inter_denominator', denominator)
+
+        electrostaticForce.setCutoffDistance(4)
+        if self.periodic:
+            electrostaticForce.setNonbondedMethod(electrostaticForce.CutoffPeriodic)
+        else:
+            electrostaticForce.setNonbondedMethod(electrostaticForce.CutoffNonPeriodic)
+        electrostaticForce.setForceGroup(self.force_group)
+        self.force = electrostaticForce
+
+    def defineInteraction(self):
+        # Merge DNA and protein particle definitions
+        particle_definition = self.dna.config['Protein-DNA particles']
+        dna_particle_definition=particle_definition[(particle_definition['molecule'] == 'DNA') &
+                                                    (particle_definition['DNA'] == self.dna.DNAtype)]
+        protein_particle_definition = particle_definition[(particle_definition['molecule'] == 'Protein')]
+
+        # Merge DNA and protein particle definitions
+        particle_definition = pandas.concat([dna_particle_definition, protein_particle_definition], sort=False)
+        particle_definition.index = particle_definition.molecule + particle_definition.name
+        self.particle_definition = particle_definition
+
+        # Open Sequence dependent electrostatics
+        sequence_electrostatics = self.dna.config['Sequence dependent electrostatics']
+        sequence_electrostatics.index = sequence_electrostatics.resname
+
+        # Select only dna and protein atoms
+        is_dna = self.protein.atoms['resname'].isin(_dnaResidues)
+        is_protein = self.protein.atoms['resname'].isin(_proteinResidues)
+        atoms = self.protein.atoms.copy()
+        atoms['is_dna'] = is_dna
+        atoms['is_protein'] = is_protein
+        DNA_list = []
+        protein_list = []
+
+        for i, atom in atoms.iterrows():
+            if atom.is_dna:
+                param = particle_definition.loc['DNA' + atom['name']]
+                charge = param.charge
+                parameters = [charge]
+                if charge != 0:
+                    DNA_list += [i]
+                    #print(atom.chainID, atom.resSeq, atom.resname, atom['name'], charge)
+            elif atom.is_protein:
+                atom_param = particle_definition.loc['Protein' + atom['name']]
+                seq_param = sequence_electrostatics.loc[atom.real_resname]
+                charge = atom_param.charge * seq_param.charge
+                parameters = [charge]
+                if charge != 0:
+                    protein_list += [i]
+                    #print(atom.chainID, atom.resSeq, atom.resname, atom['name'], charge)
+            else:
+                print(f'Residue {i} not included in protein-DNA electrostatics')
+                parameters = [0]  # No charge if it is not DNA
+            # print (i,parameters)
+            self.force.addParticle(parameters)
+        self.force.addInteractionGroup(DNA_list, protein_list)
+        # self.force.addInteractionGroup(protein_list, protein_list) #protein-protein electrostatics should be included using debye Huckel Terms
+
+        # addExclusions
+        addNonBondedExclusions(self.dna, self.force)
+
+
+class ElectrostaticsProteinDNA2(ProteinDNAForce):
     """DNA-protein and protein-protein electrostatics."""
     def __init__(self, dna, protein, k=1, force_group=15):
         self.k = k
