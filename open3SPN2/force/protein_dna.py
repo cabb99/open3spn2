@@ -11,7 +11,7 @@ _proteinResidues = ['IPR', 'IGL', 'NGP']
 
 class ExclusionProteinDNA(ProteinDNAForce):
     """ Protein-DNA exclusion potential"""
-    def __init__(self, dna, protein, k=1, force_group=14, build_exclusion_list=True):
+    def __init__(self, dna, protein, k=1, force_group=14, build_exclusion_list=False):
         self.k = k
         self.force_group = force_group
         # moves pair exclusions into the hamiltonian
@@ -99,7 +99,7 @@ class ExclusionProteinDNA(ProteinDNAForce):
 
 class ElectrostaticsProteinDNA(ProteinDNAForce):
     """DNA-protein and protein-protein electrostatics."""
-    def __init__(self, dna, protein, k=1, force_group=15, build_exclusion_list=True):
+    def __init__(self, dna, protein, k=1, force_group=15, build_exclusion_list=False):
         self.k = k
         self.force_group = force_group
         # for backward compatibility
