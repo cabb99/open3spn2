@@ -457,7 +457,7 @@ def addNonBondedExclusions(dna, force, OpenCLPatch=True):
 
 
 class Exclusion(DNAForce, openmm.CustomNonbondedForce):
-    def __init__(self, dna, k=1, k_name=None, force_group=12, OpenCLPatch=True, build_exclusion_list=True):
+    def __init__(self, dna, k=1, k_name=None, force_group=12, OpenCLPatch=True, build_exclusion_list=False):
         self.k = k
         self.k_name = k_name or 'k_exclusion'
         self.force_group = force_group
@@ -524,7 +524,7 @@ class Exclusion(DNAForce, openmm.CustomNonbondedForce):
 
 class Electrostatics(DNAForce, openmm.CustomNonbondedForce):
     def __init__(self, dna, k=1, k_name=None, force_group=13, temperature=300*unit.kelvin, salt_concentration=100*unit.millimolar, 
-                            OpenCLPatch=True, build_exclusion_list=True):
+                            OpenCLPatch=True, build_exclusion_list=False):
         self.k = k
         self.k_name = k_name or 'k_electrostatics'
         self.force_group = force_group
