@@ -713,18 +713,12 @@ forces = dict(Bond=Bond,
               Stacking=Stacking,
               Dihedral=Dihedral,
               BasePair=BasePair,
-              BasePair2=BasePair2,
               CrossStacking=CrossStacking,
-              CrossStacking2=CrossStacking2,
               Exclusion=Exclusion,
-              Exclusion2=Exclusion2,
-              Electrostatics=Electrostatics,
-              Electrostatics2=Electrostatics2)
+              Electrostatics=Electrostatics)
 
 protein_dna_forces=dict(ExclusionProteinDNA=ExclusionProteinDNA,
-                        ExclusionProteinDNA2=ExclusionProteinDNA2,
-                        ElectrostaticsProteinDNA=ElectrostaticsProteinDNA,
-                        ElectrostaticsProteinDNA2=ElectrostaticsProteinDNA2)
+                        ElectrostaticsProteinDNA=ElectrostaticsProteinDNA)
 
 
 
