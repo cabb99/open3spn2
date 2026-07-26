@@ -4,14 +4,13 @@ import openmm
 import openmm.unit as unit
 import pandas
 from .template import ProteinDNAForce
-from .dna import addNonBondedExclusions
 _af = 1 * unit.degree / unit.radian  # angle scaling factor
 _dnaResidues = ['DA', 'DC', 'DT', 'DG']
 _proteinResidues = ['IPR', 'IGL', 'NGP']
 
 class ExclusionProteinDNA(ProteinDNAForce):
     """ Protein-DNA exclusion potential"""
-    def __init__(self, dna, protein, k=1, force_group=14, build_exclusion_list=False):
+    def __init__(self, dna, protein, k=1, force_group=14):
         self.k = k
         self.force_group = force_group
         # moves pair exclusions into the hamiltonian
@@ -20,8 +19,6 @@ class ExclusionProteinDNA(ProteinDNAForce):
         # consistent with the lammps 3SPN2 code
         # (actually, we'll use 2 to be consistent with the regular Exclusion term)
         self.min_seq_sep = 2
-        # for backward compatibility
-        self.build_exclusion_list = bool(build_exclusion_list)
         super().__init__(dna, protein)
 
     def reset(self):
@@ -90,20 +87,12 @@ class ExclusionProteinDNA(ProteinDNAForce):
             self.force.addParticle([parameters[0], parameters[1], parameters[2], ord(atom.chainID), int(atom.resSeq)])
         self.force.addInteractionGroup(DNA_list, protein_list)
 
-        # probably best to avoid the exclusion list in all energy terms,
-        # but some old run scripts might add exclusions to other terms, 
-        # leading to issues if we skip the setup here
-        if self.build_exclusion_list:
-            addNonBondedExclusions(self.dna, self.force)
-
 
 class ElectrostaticsProteinDNA(ProteinDNAForce):
     """DNA-protein and protein-protein electrostatics."""
-    def __init__(self, dna, protein, k=1, force_group=15, build_exclusion_list=False):
+    def __init__(self, dna, protein, k=1, force_group=15):
         self.k = k
         self.force_group = force_group
-        # for backward compatibility
-        self.build_exclusion_list = bool(build_exclusion_list)
         super().__init__(dna, protein)
 
     def reset(self):
@@ -183,11 +172,6 @@ class ElectrostaticsProteinDNA(ProteinDNAForce):
         self.force.addInteractionGroup(DNA_list, protein_list)
         # self.force.addInteractionGroup(protein_list, protein_list) #protein-protein electrostatics should be included using debye Huckel Terms
 
-        # probably best to avoid the exclusion list in all energy terms,
-        # but some old run scripts might add exclusions to other terms, 
-        # leading to issues if we skip the setup here
-        if self.build_exclusion_list:
-            addNonBondedExclusions(self.dna, self.force)
 
 
 class AMHgoProteinDNA(ProteinDNAForce):

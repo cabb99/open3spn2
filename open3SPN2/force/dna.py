@@ -427,37 +427,8 @@ class CrossStacking(DNAForce):
         return fg
 
 
-def addNonBondedExclusions(dna, force, OpenCLPatch=True):
-    """Adds the identity-independent intra-residue and neighboring-residue exclusions that every
-    CustomNonbondedForce shares. Complementary base-pair exclusions are NOT added here -- Exclusion
-    masks them inside its energy expression -- so all CustomNonbondedForce keep one identical
-    exclusion list (required on the CPU/GPU platforms) and mix cleanly with other force fields."""
-    is_dna = dna.atoms['resname'].isin(_dnaResidues)
-    atoms = dna.atoms.copy()
-    selection = atoms[is_dna].sort_index()
-    selection['index'] = selection.index
-    selection['neighbor'] = selection['chainID'].astype(str) + '_' + (selection['resSeq'] - 1).astype(str)
-    selection.index = selection['chainID'].astype(str) + '_' + (selection['resSeq']).astype(str)
-
-    exclusions = []
-    for i, neighbor_res, self_res in zip(selection['index'], selection['neighbor'], selection.index):
-        # Add exclusions for the same residue
-        for j in selection.loc[self_res, 'index']:
-            if i > j:
-                exclusions += [(j, i)]
-        # Add exclusions with the neighboring residue on the same chain
-        try:
-            for j in selection.loc[neighbor_res, 'index']:
-                exclusions += [(j, i)]
-        except KeyError:
-            continue
-
-    for i, j in set(exclusions):
-        force.addExclusion(i, j)
-
-
 class Exclusion(DNAForce, openmm.CustomNonbondedForce):
-    def __init__(self, dna, k=1, k_name=None, force_group=12, OpenCLPatch=True, build_exclusion_list=False):
+    def __init__(self, dna, k=1, k_name=None, force_group=12, OpenCLPatch=True):
         self.k = k
         self.k_name = k_name or 'k_exclusion'
         self.force_group = force_group
@@ -467,8 +438,6 @@ class Exclusion(DNAForce, openmm.CustomNonbondedForce):
         # consistent with the lammps 3SPN2 code
         # (actually, we'll use 2 to be consistent with the regular Exclusion term)
         self.min_seq_sep = 2
-        # for backward compatibility
-        self.build_exclusion_list = bool(build_exclusion_list)
         super().__init__(dna, OpenCLPatch=OpenCLPatch)
 
     def reset(self):
@@ -515,16 +484,11 @@ class Exclusion(DNAForce, openmm.CustomNonbondedForce):
                 parameters = [0, .1, 0, 0, 0]  # Null energy, some radius, non-base, some chain, some residue
             self.force.addParticle(parameters)
 
-        # probably best to avoid the exclusion list in all energy terms,
-        # but some old run scripts might add exclusions to other terms, 
-        # leading to issues if we skip the setup here
-        if self.build_exclusion_list:
-            addNonBondedExclusions(self.dna, self.force)
 
 
 class Electrostatics(DNAForce, openmm.CustomNonbondedForce):
     def __init__(self, dna, k=1, k_name=None, force_group=13, temperature=300*unit.kelvin, salt_concentration=100*unit.millimolar, 
-                            OpenCLPatch=True, build_exclusion_list=False):
+                            OpenCLPatch=True):
         self.k = k
         self.k_name = k_name or 'k_electrostatics'
         self.force_group = force_group
@@ -536,8 +500,6 @@ class Electrostatics(DNAForce, openmm.CustomNonbondedForce):
         # consistent with the lammps 3SPN2 code
         # (actually, we'll use 2 to be consistent with the regular Exclusion term)
         self.min_seq_sep = 2
-        # for backward compatibility
-        self.build_exclusion_list = bool(build_exclusion_list)
         super().__init__(dna, OpenCLPatch=OpenCLPatch)
 
     def reset(self):
@@ -595,9 +557,3 @@ class Electrostatics(DNAForce, openmm.CustomNonbondedForce):
                 parameters = [0, 0, 0]  # No charge if it is not DNA, some chain, some residue
             # print (i,parameters)
             self.force.addParticle(parameters)
-
-        # probably best to avoid the exclusion list in all energy terms,
-        # but some old run scripts might add exclusions to other terms, 
-        # leading to issues if we skip the setup here
-        if self.build_exclusion_list:
-            addNonBondedExclusions(self.dna, self.force, self.OpenCLPatch)

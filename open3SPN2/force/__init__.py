@@ -9,7 +9,6 @@ from .dna import BasePair
 from .dna import CrossStacking
 from .dna import Exclusion
 from .dna import Electrostatics
-from .dna import addNonBondedExclusions
 
 from .protein_dna import ExclusionProteinDNA
 from .protein_dna import ElectrostaticsProteinDNA
