@@ -263,6 +263,123 @@ class BasePair(DNAForce, openmm.CustomHbondForce):
             system.addForce(self.forces[f])
 
 
+class BasePair2(DNAForce, openmm.CustomHbondForce):
+    def __init__(self, dna, k=1, k_name=None, force_group=10, OpenCLPatch=True):
+        self.k = k
+        self.k_name = k_name or 'k_basepair'
+        self.force_group = force_group
+        # moves pair exclusions into the hamiltonian
+        # so we don't need to use the openmm exclusion list;
+        # also applies a minimum sequence separation of 5,
+        # consistent with the lammps 3SPN2 code
+        # (actually, we'll use 3 to be consistent with the OpenCLPatch version)
+        self.min_seq_sep = 3
+        super().__init__(dna, OpenCLPatch=OpenCLPatch)
+
+    def reset(self):
+        def basePairForce():
+            pairForce = openmm.CustomHbondForce(f'''{self.k_name}*seqsep*energy;
+                        seqsep=max(1-delta(chainID_a-chainID_d),step(abs(resSeq_a-resSeq_d)-{self.min_seq_sep}));
+                        energy=rep+1/2*(1+cos(dphi))*fdt1*fdt2*attr;
+                        rep  = epsilon*(1-exp(-alpha*dr))^2*(1-step(dr));
+                        attr = epsilon*(1-exp(-alpha*dr))^2*step(dr)-epsilon;
+                        fdt1 = max(f1*pair0t1,pair1t1);
+                        fdt2 = max(f2*pair0t2,pair1t2);
+                        pair1t1 = step(pi/2+dt1)*step(pi/2-dt1);
+                        pair1t2 = step(pi/2+dt2)*step(pi/2-dt2);
+                        pair0t1 = step(pi+dt1)*step(pi-dt1);
+                        pair0t2 = step(pi+dt2)*step(pi-dt2);
+                        f1 = 1-cos(dt1)^2;
+                        f2 = 1-cos(dt2)^2;
+                        dphi = dihedral(d2,d1,a1,a2)-phi0;
+                        dr    = distance(d1,a1)-sigma;
+                        dt1   = rng*(angle(d2,d1,a1)-t01);
+                        dt2   = rng*(angle(a2,a1,d1)-t02);''')
+            if self.periodic:
+                pairForce.setNonbondedMethod(pairForce.CutoffPeriodic)
+            else:
+                pairForce.setNonbondedMethod(pairForce.CutoffNonPeriodic)
+            pairForce.setCutoffDistance(1.8)  # Paper
+            pairForce.addPerDonorParameter('phi0')
+            pairForce.addPerDonorParameter('sigma')
+            pairForce.addPerDonorParameter('t01')
+            pairForce.addPerDonorParameter('t02')
+            pairForce.addPerDonorParameter('rng')
+            pairForce.addPerDonorParameter('epsilon')
+            pairForce.addPerDonorParameter('alpha')
+            pairForce.addPerDonorParameter('chainID_d')
+            pairForce.addPerDonorParameter('resSeq_d')
+            pairForce.addPerAcceptorParameter('chainID_a')
+            pairForce.addPerAcceptorParameter('resSeq_a')
+            pairForce.addGlobalParameter('pi', np.pi)
+            pairForce.addGlobalParameter(self.k_name, self.k)
+            self.force = pairForce
+            pairForce.setForceGroup(self.force_group)
+            return pairForce
+
+        basePairForces = {}
+        pair_definition = self.dna.pair_definition[self.dna.pair_definition['DNA'] == self.dna.DNAtype]
+        for i, pair in pair_definition.iterrows():
+            basePairForces.update({i: basePairForce()})
+        self.forces = basePairForces
+
+    def defineInteraction(self):
+        pair_definition = self.dna.pair_definition[self.dna.pair_definition['DNA'] == self.dna.DNAtype]
+        atoms = self.dna.atoms.copy()
+        atoms['index'] = atoms.index
+        atoms.index = zip(atoms['chainID'], atoms['resSeq'], atoms['name'])
+        is_dna = atoms['resname'].isin(_dnaResidues)
+
+        for i, pair in pair_definition.iterrows():
+            D1 = atoms[(atoms['name'] == pair['Base1']) & is_dna].copy()
+            A1 = atoms[(atoms['name'] == pair['Base2']) & is_dna].copy()
+
+            try:
+                D2 = atoms.loc[[(c, r, 'S') for c, r, n in D1.index]]
+            except KeyError:
+                for c, r, n in D1.index:
+                    if (c, r, 'S') not in atoms.index:
+                        print(f'Residue {c}:{r} does not have a Sugar atom (S)')
+                raise KeyError
+
+            try:
+                A2 = atoms.loc[[(c, r, 'S') for c, r, n in A1.index]]
+            except KeyError:
+                for c, r, n in A1.index:
+                    if (c, r, 'S') not in atoms.index:
+                        print(f'Residue {c}:{r} does not have a Sugar atom (S)')
+                raise KeyError
+
+            D1_list = list(D1['index'])
+            A1_list = list(A1['index'])
+            D2_list = list(D2['index'])
+            A2_list = list(A2['index'])
+
+            # Define parameters
+            parameters = [pair.torsion * _af,
+                          pair.sigma,
+                          pair.t1 * _af,
+                          pair.t2 * _af,
+                          pair.rang,
+                          pair.epsilon,
+                          pair.alpha]
+
+            # Add donors and acceptors
+            # Here I am including the same atom twice,
+            # it doesn't seem to break things
+            for d1, d2 in zip(D1_list, D2_list):
+                info = D1[D1['index']==d1] # returns a row of a DataFrame, whose attributes are numpy object arrays
+                #raise ValueError(f'info.chainID.shape: {info.chainID.shape}, info.resSeq.shape:{info.resSeq.shape})')
+                self.forces[i].addDonor(d1, d2, -1, parameters + [ord(info.chainID[0]), int(info.resSeq[0])])
+            for a1, a2 in zip(A1_list, A2_list):
+                info = A1[A1['index']==a1] # returns a row of a DataFrame, whose attributes are numpy object arrays
+                self.forces[i].addAcceptor(a1, a2, -1, [ord(info.chainID[0]), int(info.resSeq[0])])
+
+    def addForce(self, system):
+        for f in self.forces:
+            system.addForce(self.forces[f])
+
+
 class CrossStacking(DNAForce):
     def __init__(self, dna, k=1, k_name=None, force_group=11, OpenCLPatch=True):
         self.k = k
@@ -411,6 +528,201 @@ class CrossStacking(DNAForce):
                         c1.addExclusion(ii, jj)
                         c2.addExclusion(jj, ii)
 
+    def addForce(self, system):
+        for c1, c2 in self.crossStackingForces.values():
+            system.addForce(c1)
+            system.addForce(c2)
+
+    def getForceGroup(self):
+        fg = 0
+        for c1, c2 in self.crossStackingForces.values():
+            fg = c1.getForceGroup()
+            break
+        for c1, c2 in self.crossStackingForces.values():
+            assert fg == c1.getForceGroup()
+            assert fg == c2.getForceGroup()
+        return fg
+
+
+class CrossStacking2(DNAForce):
+    def __init__(self, dna, k=1, k_name=None, force_group=11, OpenCLPatch=True):
+        self.k = k
+        self.k_name = k_name or 'k_crossstacking'
+        self.force_group = force_group
+        # moves pair exclusions into the hamiltonian
+        # so we don't need to use the openmm exclusion list;
+        # also applies a minimum sequence separation of 5,
+        # consistent with the lammps 3SPN2 code
+        # (actually, we'll use 3 to be consistent with the OpenCLPatch version)
+        self.min_seq_sep = 3
+        super().__init__(dna, OpenCLPatch=OpenCLPatch)
+
+    def reset(self):
+        def crossStackingForce(parametersOnDonor=False):
+            crossForce = openmm.CustomHbondForce(f'''{self.k_name}*seqsep*energy;
+                         seqsep   = max(1-delta(chainID_a-chainID_d),step(abs(resSeq_a-resSeq_d)-{self.min_seq_sep}));
+                         energy   = fdt3*fdtCS*attr/2;
+                         attr     = epsilon*(1-exp(-alpha*dr))^2*step(dr)-epsilon;
+                         fdt3     = max(f1*pair0t3,pair1t3);
+                         fdtCS    = max(f2*pair0tCS,pair1tCS);
+                         pair0t3  = step(pi+dt3)*step(pi-dt3);
+                         pair0tCS = step(pi+dtCS)*step(pi-dtCS);
+                         pair1t3  = step(pi/2+dt3)*step(pi/2-dt3);
+                         pair1tCS = step(pi/2+dtCS)*step(pi/2-dtCS);
+                         f1       = 1-cos(dt3)^2;
+                         f2       = 1-cos(dtCS)^2;
+                         dr       = distance(d1,a3)-sigma;
+                         dt3      = rng_BP*(t3-t03);
+                         dtCS     = rng_CS*(tCS-t0CS);
+                         tCS      = angle(d2,d1,a3);
+                         t3       = acos(cost3lim);
+                         cost3lim = min(max(cost3,-0.99),0.99);
+                         cost3    = sin(t1)*sin(t2)*cos(phi)-cos(t1)*cos(t2);
+                         t1       = angle(d2,d1,a1);
+                         t2       = angle(d1,a1,a2);
+                         phi      = dihedral(d2,d1,a1,a2);''')
+            if self.periodic:
+                crossForce.setNonbondedMethod(crossForce.CutoffPeriodic)
+            else:
+                crossForce.setNonbondedMethod(crossForce.CutoffNonPeriodic)
+            crossForce.setCutoffDistance(1.8)  # Paper
+            parameters = ['t03', 't0CS', 'rng_CS', 'rng_BP', 'epsilon', 'alpha', 'sigma']
+            for p in parameters:
+                if parametersOnDonor:
+                    crossForce.addPerDonorParameter(p)
+                else:
+                    crossForce.addPerAcceptorParameter(p)
+            crossForce.addPerDonorParameter('chainID_d')
+            crossForce.addPerDonorParameter('resSeq_d')
+            crossForce.addPerAcceptorParameter('chainID_a')
+            crossForce.addPerAcceptorParameter('resSeq_a')
+            crossForce.addGlobalParameter('pi', np.pi)
+            crossForce.addGlobalParameter(self.k_name, self.k)
+            crossForce.setForceGroup(self.force_group)
+            return crossForce
+
+        crossStackingForces = {}
+        for base in ['A', 'T', 'G', 'C']:
+            crossStackingForces.update({base: (crossStackingForce(), crossStackingForce())})
+        self.crossStackingForces = crossStackingForces
+
+    def defineInteraction(self):
+        atoms = self.dna.atoms.copy()
+        atoms['index'] = atoms.index
+        atoms.index = zip(atoms['chainID'], atoms['resSeq'], atoms['name'].replace(['A', 'C', 'T', 'G'], 'B'))
+        is_dna = atoms['resname'].isin(_dnaResidues)
+        bases = atoms[atoms['name'].isin(['A', 'T', 'G', 'C']) & is_dna]
+        D1 = bases
+        D2 = atoms.reindex([(c, r, 'S') for c, r, n in bases.index])
+        D3 = atoms.reindex([(c, r + 1, 'B') for c, r, n in bases.index])
+        A1 = D1
+        A2 = D2
+        A3 = atoms.reindex([(c, r - 1, 'B') for c, r, n in bases.index])
+
+        # Select only bases where the other atoms exist
+        D2.index = D1.index
+        D3.index = D1.index
+        temp = pandas.concat([D1, D2, D3], axis=1, keys=['D1', 'D2', 'D3'])
+        sel = temp[temp['D3', 'name'].isin(['A', 'T', 'G', 'C']) &  # D3 must be a base
+                   temp['D2', 'name'].isin(['S']) &  # D2 must be a sugar
+                   (temp['D3', 'chainID'] == temp['D1', 'chainID']) &  # D3 must be in the same chain
+                   (temp['D2', 'chainID'] == temp['D1', 'chainID'])].index  # D2 must be in the same chain
+        D1 = atoms.reindex(sel)
+        D2 = atoms.reindex([(c, r, 'S') for c, r, n in sel])
+        D3 = atoms.reindex([(c, r + 1, 'B') for c, r, n in sel])
+
+        # Aceptors
+        A2.index = A1.index
+        A3.index = A1.index
+        temp = pandas.concat([A1, A2, A3], axis=1, keys=['A1', 'A2', 'A3'])
+        sel = temp[temp['A3', 'name'].isin(['A', 'T', 'G', 'C']) &  # A3 must be a base
+                   temp['A2', 'name'].isin(['S']) &  # A2 must be a sugar
+                   (temp['A3', 'chainID'] == temp['A1', 'chainID']) &  # A3 must be in the same chain
+                   (temp['A2', 'chainID'] == temp['A1', 'chainID'])].index  # A2 must be in the same chain
+        A1 = atoms.reindex(sel)
+        A2 = atoms.reindex([(c, r, 'S') for c, r, n in sel])
+        A3 = atoms.reindex([(c, r - 1, 'B') for c, r, n in sel])
+
+        # Parameters
+        cross_definition = self.dna.cross_definition[self.dna.cross_definition['DNA'] == self.dna.DNAtype].copy()
+        i = [a for a in zip(cross_definition['Base_d1'], cross_definition['Base_a1'], cross_definition['Base_a3'])]
+        cross_definition.index = i
+        atom_index_to_group_index = {key: [{'donors':{}, 'acceptors':{}}, {'donors':{}, 'acceptors':{}}] for key in self.crossStackingForces}
+        # this dictionary looks like {'A': [{'donors':{}, 'acceptors':{}}, {'donors':{}, 'acceptors':{}}],
+        #                             'T': [{'donors':{}, 'acceptors':{}}, {'donors':{}, 'acceptors':{}}],
+        #                             'G': [{'donors':{}, 'acceptors':{}}, {'donors':{}, 'acceptors':{}}],
+        #                             'C': [{'donors':{}, 'acceptors':{}}, {'donors':{}, 'acceptors':{}}]}
+        # there are two Forces in each type A/T/G/C, each with donors and acceptors,
+        # whose dictionary values (the innermost dictionaries) map tuples of atom indices onto donor/acceptor indices
+
+        donors = {i: [] for i in ['A', 'T', 'G', 'C']}
+        for donator, donator2, d1, d2, d3 in zip(D1.itertuples(), D3.itertuples(), D1['index'], D2['index'],
+                                                 D3['index']):
+            d1t = donator.name
+            d3t = donator2.name
+            c1, c2 = self.crossStackingForces[d1t]
+            a1t = _complement[d1t]
+            param = cross_definition.loc[[(a1t, d1t, d3t)]].squeeze()
+            #raise ValueError(donator)
+            parameters = [param['t03'] * _af,
+                          param['T0CS_2'] * _af,
+                          param['rng_cs2'],
+                          param['rng_bp'],
+                          param['eps_cs2'],
+                          param['alpha_cs2'],
+                          param['Sigma_2']]
+            top_info = [ord(donator.chainID), int(donator.resSeq)]
+            assert isinstance(top_info[0], int)
+            assert isinstance(top_info[1], int)
+            atom_index_to_group_index[d1t][0]['donors'].update({(d1,d2,d3): c1.addDonor(d1, d2, d3, top_info)})
+            atom_index_to_group_index[d1t][1]['acceptors'].update({(d1,d2,d3): c2.addAcceptor(d1, d2, d3, parameters + top_info)})
+            donors[d1t] += [d1]
+
+        aceptors = {i: [] for i in ['A', 'T', 'G', 'C']}
+        for aceptor, aceptor2, a1, a2, a3 in zip(A1.itertuples(), A3.itertuples(), A1['index'], A2['index'],
+                                                 A3['index']):
+            a1t = aceptor.name
+            a3t = aceptor2.name
+            c1, c2 = self.crossStackingForces[_complement[a1t]]
+            d1t = _complement[a1t]
+            param = cross_definition.loc[[(d1t, a1t, a3t)]].squeeze()
+            parameters = [param['t03'] * _af,
+                          param['T0CS_1'] * _af,
+                          param['rng_cs1'],
+                          param['rng_bp'],
+                          param['eps_cs1'],
+                          param['alpha_cs1'],
+                          param['Sigma_1']]
+            top_info = [ord(aceptor.name), int(aceptor.resSeq)]
+            assert isinstance(top_info[0], int)
+            assert isinstance(top_info[1], int)
+            atom_index_to_group_index[_complement[a1t]][0]['acceptors'].update({(a1,a2,a3): c1.addAcceptor(a1, a2, a3, parameters + top_info)})
+            atom_index_to_group_index[_complement[a1t]][1]['donors'].update({(a1,a2,a3): c2.addDonor(a1, a2, a3, top_info)})
+            aceptors[_complement[a1t]] += [a1]
+
+        # Close-in-sequence donors/acceptors mathematically have 0 energy
+        # (due to the seqsep condition),
+        # but there could be numerical issues with evaluating the finite
+        # but huge morse potential at short distances before multiplying by 0.
+        # Also, donor-acceptor pairs sharing (a) common atom(s) 
+        # could have issues differentiating the potential, as described in
+        # https://github.com/cabb99/openawsem/issues/94.
+        # So we will build a small pair exclusion list only for 
+        # donor-acceptor pairs with (a) common atom(s).
+        for force_type in self.crossStackingForces:
+            forces = self.crossStackingForces[force_type]
+            for force_index in [0,1]: # forces list should only have two elements
+                donor_dict = atom_index_to_group_index[force_type][force_index]['donors']
+                acceptor_dict = atom_index_to_group_index[force_type][force_index]['acceptors']
+                for donor in donor_dict:
+                    for acceptor in acceptor_dict:
+                        # donor and acceptor are tuples of openmm particle indices
+                        # donor: (d1,d2,d3)
+                        # acceptor: (a1,a2,a3)
+                        if not set(donor).isdisjoint(set(acceptor)): # checks that set intersection is not empty
+                            forces[force_index].addExclusion(donor_dict[donor], acceptor_dict[acceptor]) # get donor/acceptor indices
+            self.crossStackingForces[force_type] = forces
+        
     def addForce(self, system):
         for c1, c2 in self.crossStackingForces.values():
             system.addForce(c1)
