@@ -2,13 +2,10 @@ from ..parser.xyz import parse_xyz
 class DNAForce(object):
     """ Wrapper for the openMM force. """
 
-    def __init__(self, dna, OpenCLPatch=True):
+    def __init__(self, dna):
         self.periodic = dna.periodic
         self.force = None
         self.dna = dna
-        # The patch allows the crosstacking force to run in OpenCL
-        # introducing a small difference in the crosstacking energy
-        self.OpenCLPatch = OpenCLPatch
 
         # Define the dna force
         self.reset()

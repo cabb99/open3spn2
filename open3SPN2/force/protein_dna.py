@@ -4,7 +4,6 @@ import openmm
 import openmm.unit as unit
 import pandas
 from .template import ProteinDNAForce
-from .dna import addNonBondedExclusions
 _af = 1 * unit.degree / unit.radian  # angle scaling factor
 _dnaResidues = ['DA', 'DC', 'DT', 'DG']
 _proteinResidues = ['IPR', 'IGL', 'NGP']
@@ -20,7 +19,7 @@ class ExclusionProteinDNA(ProteinDNAForce):
         exclusionForce = openmm.CustomNonbondedForce(f"""k_exclusion_protein_DNA*energy;
                          energy=(4*epsilon*((sigma/r)^12-(sigma/r)^6)-offset)*step(cutoff-r);
                          offset=4*epsilon*((sigma/cutoff)^12-(sigma/cutoff)^6);
-                         sigma=0.5*(sigma1+sigma2); 
+                         sigma=0.5*(sigma1+sigma2);
                          epsilon=sqrt(epsilon1*epsilon2);
                          cutoff=sqrt(cutoff1*cutoff2)""")
         exclusionForce.addGlobalParameter('k_exclusion_protein_DNA', self.k)
@@ -73,14 +72,11 @@ class ExclusionProteinDNA(ProteinDNAForce):
                 protein_list += [i]
             else:
                 print(f'Residue {i} not included in protein-DNA interactions')
-                parameters = [0, .1,.1]
+                parameters = [0, .1, .1]
             atoms.loc[i, ['epsilon', 'radius', 'cutoff']] = parameters
             self.atoms = atoms
             self.force.addParticle(parameters)
         self.force.addInteractionGroup(DNA_list, protein_list)
-
-        # addExclusions
-        addNonBondedExclusions(self.dna, self.force)
 
 
 class ElectrostaticsProteinDNA(ProteinDNAForce):
@@ -166,9 +162,6 @@ class ElectrostaticsProteinDNA(ProteinDNAForce):
             self.force.addParticle(parameters)
         self.force.addInteractionGroup(DNA_list, protein_list)
         # self.force.addInteractionGroup(protein_list, protein_list) #protein-protein electrostatics should be included using debye Huckel Terms
-
-        # addExclusions
-        addNonBondedExclusions(self.dna, self.force)
 
 
 class AMHgoProteinDNA(ProteinDNAForce):

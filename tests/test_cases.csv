@@ -45,4 +45,3 @@ BasePair,B_curved,tests/bdna_curv/,traj.xyz,sim_stacking.log,ebp,150.54,OpenCL
 CrossStacking,B_curved,tests/bdna_curv/,traj.xyz,sim_stacking.log,ecstk,150.54,OpenCL
 Exclusion,B_curved,tests/bdna_curv/,traj.xyz,sim.log,eexcl,150.54,OpenCL
 Electrostatics,B_curved,tests/bdna_curv/,traj.xyz,sim.log,dna_ecou,150.54,OpenCL
-
