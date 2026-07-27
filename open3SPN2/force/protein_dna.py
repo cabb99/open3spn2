@@ -13,28 +13,19 @@ class ExclusionProteinDNA(ProteinDNAForce):
     def __init__(self, dna, protein, k=1, force_group=14):
         self.k = k
         self.force_group = force_group
-        # moves pair exclusions into the hamiltonian
-        # so we don't need to use the openmm exclusion list;
-        # also applies a minimum sequence separation of 5,
-        # consistent with the lammps 3SPN2 code
-        # (actually, we'll use 2 to be consistent with the regular Exclusion term)
-        self.min_seq_sep = 2
         super().__init__(dna, protein)
 
     def reset(self):
-        exclusionForce = openmm.CustomNonbondedForce(f"""k_exclusion_protein_DNA*seqsep*energy;
+        exclusionForce = openmm.CustomNonbondedForce(f"""k_exclusion_protein_DNA*energy;
                          energy=(4*epsilon*((sigma/r)^12-(sigma/r)^6)-offset)*step(cutoff-r);
                          offset=4*epsilon*((sigma/cutoff)^12-(sigma/cutoff)^6);
-                         sigma=0.5*(sigma1+sigma2); 
+                         sigma=0.5*(sigma1+sigma2);
                          epsilon=sqrt(epsilon1*epsilon2);
-                         cutoff=sqrt(cutoff1*cutoff2);
-                         seqsep=max(1-delta(chainID1-chainID2),step(abs(resSeq2-resSeq1)-{self.min_seq_sep}))""")
+                         cutoff=sqrt(cutoff1*cutoff2)""")
         exclusionForce.addGlobalParameter('k_exclusion_protein_DNA', self.k)
         exclusionForce.addPerParticleParameter('epsilon')
         exclusionForce.addPerParticleParameter('sigma')
         exclusionForce.addPerParticleParameter('cutoff')
-        exclusionForce.addPerParticleParameter('chainID')
-        exclusionForce.addPerParticleParameter('resSeq')
         exclusionForce.setCutoffDistance(1.55)
         # exclusionForce.setUseLongRangeCorrection(True)
         exclusionForce.setForceGroup(self.force_group)  # There can not be multiple cutoff distance on the same force group
@@ -81,10 +72,10 @@ class ExclusionProteinDNA(ProteinDNAForce):
                 protein_list += [i]
             else:
                 print(f'Residue {i} not included in protein-DNA interactions')
-                parameters = [0, .1,.1, 0, 0] # last two numbers meaningless 
+                parameters = [0, .1, .1]
             atoms.loc[i, ['epsilon', 'radius', 'cutoff']] = parameters
             self.atoms = atoms
-            self.force.addParticle([parameters[0], parameters[1], parameters[2], ord(atom.chainID), int(atom.resSeq)])
+            self.force.addParticle(parameters)
         self.force.addInteractionGroup(DNA_list, protein_list)
 
 
@@ -171,7 +162,6 @@ class ElectrostaticsProteinDNA(ProteinDNAForce):
             self.force.addParticle(parameters)
         self.force.addInteractionGroup(DNA_list, protein_list)
         # self.force.addInteractionGroup(protein_list, protein_list) #protein-protein electrostatics should be included using debye Huckel Terms
-
 
 
 class AMHgoProteinDNA(ProteinDNAForce):

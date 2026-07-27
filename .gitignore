@@ -126,3 +126,7 @@ dmypy.json
 
 #Benchmark tests
 Tests/Benchmark
+
+# Other artifacts created by open3SPN2
+atomistic_dna
+clean.pdb

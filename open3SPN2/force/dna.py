@@ -14,6 +14,21 @@ _complement = {'A': 'T', 'T': 'A', 'G': 'C', 'C': 'G'}
 # sums to 5, so a single window on the sum masks exactly the base-pair exclusions.
 _base_type = {'A': 1, 'G': 2, 'C': 3, 'T': 4}
 
+def chained_sequence_index(atoms, chain_gap=100):
+    """Residue index used by the sequence separation masks of the forces.
+
+    Residues keep their relative separation within a chain and consecutive chains are offset by
+    `chain_gap`, so a single ``abs(seqid_i - seqid_j)`` comparison masks pairs that are close in
+    sequence without also having to compare chain identifiers on every step.
+
+    OpenMM requires every CustomNonbondedForce of a system to carry the same exclusions, so the
+    masks are evaluated inside the energy expressions instead of through the exclusion list."""
+    resSeq = atoms['resSeq'].astype(int)
+    chains = resSeq.groupby(atoms['chainID'])
+    chain_start = chains.min()
+    chain_offset = (chains.max() - chain_start + chain_gap).cumsum().shift(fill_value=0)
+    return resSeq - atoms['chainID'].map(chain_start) + atoms['chainID'].map(chain_offset)
+
 
 class Bond(DNAForce, openmm.CustomBondForce):
     def __init__(self, dna, k=1, k_name=None, force_group=6):
@@ -153,18 +168,13 @@ class BasePair(DNAForce, openmm.CustomHbondForce):
         self.k = k
         self.k_name = k_name or 'k_basepair'
         self.force_group = force_group
-        # moves pair exclusions into the hamiltonian
-        # so we don't need to use the openmm exclusion list;
-        # also applies a minimum sequence separation of 5,
-        # consistent with the lammps 3SPN2 code
-        # (actually, we'll use 3 to be consistent with the OpenCLPatch version)
         self.min_seq_sep = 3
         super().__init__(dna)
 
     def reset(self):
         def basePairForce():
             pairForce = openmm.CustomHbondForce(f'''{self.k_name}*seqsep*energy;
-                        seqsep=max(1-delta(chainID_a-chainID_d),step(abs(resSeq_a-resSeq_d)-{self.min_seq_sep}));
+                        seqsep=step(abs(seqid_a-seqid_d)-{self.min_seq_sep});
                         energy=rep+1/2*(1+cos(dphi))*fdt1*fdt2*attr;
                         rep  = epsilon*(1-exp(-alpha*dr))^2*(1-step(dr));
                         attr = epsilon*(1-exp(-alpha*dr))^2*step(dr)-epsilon;
@@ -192,10 +202,8 @@ class BasePair(DNAForce, openmm.CustomHbondForce):
             pairForce.addPerDonorParameter('rng')
             pairForce.addPerDonorParameter('epsilon')
             pairForce.addPerDonorParameter('alpha')
-            pairForce.addPerDonorParameter('chainID_d')
-            pairForce.addPerDonorParameter('resSeq_d')
-            pairForce.addPerAcceptorParameter('chainID_a')
-            pairForce.addPerAcceptorParameter('resSeq_a')
+            pairForce.addPerDonorParameter('seqid_d')
+            pairForce.addPerAcceptorParameter('seqid_a')
             pairForce.addGlobalParameter('pi', np.pi)
             pairForce.addGlobalParameter(self.k_name, self.k)
             self.force = pairForce
@@ -212,6 +220,7 @@ class BasePair(DNAForce, openmm.CustomHbondForce):
         pair_definition = self.dna.pair_definition[self.dna.pair_definition['DNA'] == self.dna.DNAtype]
         atoms = self.dna.atoms.copy()
         atoms['index'] = atoms.index
+        atoms['seqid'] = chained_sequence_index(atoms)
         atoms.index = zip(atoms['chainID'], atoms['resSeq'], atoms['name'])
         is_dna = atoms['resname'].isin(_dnaResidues)
 
@@ -252,35 +261,31 @@ class BasePair(DNAForce, openmm.CustomHbondForce):
             # Add donors and acceptors
             # Here I am including the same atom twice,
             # it doesn't seem to break things
-            for d1, d2 in zip(D1_list, D2_list):
-                info = D1[D1['index']==d1] # returns a row of a DataFrame, whose attributes are numpy object arrays
-                #raise ValueError(f'info.chainID.shape: {info.chainID.shape}, info.resSeq.shape:{info.resSeq.shape})')
-                self.forces[i].addDonor(d1, d2, -1, parameters + [ord(info.chainID[0]), int(info.resSeq[0])])
-            for a1, a2 in zip(A1_list, A2_list):
-                info = A1[A1['index']==a1] # returns a row of a DataFrame, whose attributes are numpy object arrays
-                self.forces[i].addAcceptor(a1, a2, -1, [ord(info.chainID[0]), int(info.resSeq[0])])
+            for d1, d2, seqid in zip(D1_list, D2_list, D1['seqid']):
+                self.forces[i].addDonor(d1, d2, -1, parameters + [int(seqid)])
+            for a1, a2, seqid in zip(A1_list, A2_list, A1['seqid']):
+                self.forces[i].addAcceptor(a1, a2, -1, [int(seqid)])
 
     def addForce(self, system):
         for f in self.forces:
             system.addForce(self.forces[f])
+
 
 class CrossStacking(DNAForce):
     def __init__(self, dna, k=1, k_name=None, force_group=11):
         self.k = k
         self.k_name = k_name or 'k_crossstacking'
         self.force_group = force_group
-        # moves pair exclusions into the hamiltonian
-        # so we don't need to use the openmm exclusion list;
-        # also applies a minimum sequence separation of 5,
-        # consistent with the lammps 3SPN2 code
-        # (actually, we'll use 3 to be consistent with the OpenCLPatch version)
+        # Donor-acceptor pairs closer than min_seq_sep residues along a chain are masked in the
+        # energy expression. 3SPN2 masks 3 residues; open3SPN2 masks 2 (min_seq_sep=3), which has
+        # a small effect on B-DNA and curved B-DNA energies.
         self.min_seq_sep = 3
         super().__init__(dna)
 
     def reset(self):
         def crossStackingForce(parametersOnDonor=False):
             crossForce = openmm.CustomHbondForce(f'''{self.k_name}*seqsep*energy;
-                         seqsep   = max(1-delta(chainID_a-chainID_d),step(abs(resSeq_a-resSeq_d)-{self.min_seq_sep}));
+                         seqsep   = step(abs(seqid_a-seqid_d)-{self.min_seq_sep});
                          energy   = fdt3*fdtCS*attr/2;
                          attr     = epsilon*(1-exp(-alpha*dr))^2*step(dr)-epsilon;
                          fdt3     = max(f1*pair0t3,pair1t3);
@@ -312,10 +317,8 @@ class CrossStacking(DNAForce):
                     crossForce.addPerDonorParameter(p)
                 else:
                     crossForce.addPerAcceptorParameter(p)
-            crossForce.addPerDonorParameter('chainID_d')
-            crossForce.addPerDonorParameter('resSeq_d')
-            crossForce.addPerAcceptorParameter('chainID_a')
-            crossForce.addPerAcceptorParameter('resSeq_a')
+            crossForce.addPerDonorParameter('seqid_d')
+            crossForce.addPerAcceptorParameter('seqid_a')
             crossForce.addGlobalParameter('pi', np.pi)
             crossForce.addGlobalParameter(self.k_name, self.k)
             crossForce.setForceGroup(self.force_group)
@@ -329,6 +332,7 @@ class CrossStacking(DNAForce):
     def defineInteraction(self):
         atoms = self.dna.atoms.copy()
         atoms['index'] = atoms.index
+        atoms['seqid'] = chained_sequence_index(atoms)
         atoms.index = zip(atoms['chainID'], atoms['resSeq'], atoms['name'].replace(['A', 'C', 'T', 'G'], 'B'))
         is_dna = atoms['resname'].isin(_dnaResidues)
         bases = atoms[atoms['name'].isin(['A', 'T', 'G', 'C']) & is_dna]
@@ -367,13 +371,9 @@ class CrossStacking(DNAForce):
         cross_definition = self.dna.cross_definition[self.dna.cross_definition['DNA'] == self.dna.DNAtype].copy()
         i = [a for a in zip(cross_definition['Base_d1'], cross_definition['Base_a1'], cross_definition['Base_a3'])]
         cross_definition.index = i
-        atom_index_to_group_index = {key: [{'donors':{}, 'acceptors':{}}, {'donors':{}, 'acceptors':{}}] for key in self.crossStackingForces}
-        # this dictionary looks like {'A': [{'donors':{}, 'acceptors':{}}, {'donors':{}, 'acceptors':{}}],
-        #                             'T': [{'donors':{}, 'acceptors':{}}, {'donors':{}, 'acceptors':{}}],
-        #                             'G': [{'donors':{}, 'acceptors':{}}, {'donors':{}, 'acceptors':{}}],
-        #                             'C': [{'donors':{}, 'acceptors':{}}, {'donors':{}, 'acceptors':{}}]}
-        # there are two Forces in each type A/T/G/C, each with donors and acceptors,
-        # whose dictionary values (the innermost dictionaries) map tuples of atom indices onto donor/acceptor indices
+        # Particle triplet of each donor and acceptor mapped onto the index its force assigned to it
+        groups = {base: [{'donors': {}, 'acceptors': {}} for force in forces]
+                  for base, forces in self.crossStackingForces.items()}
 
         donors = {i: [] for i in ['A', 'T', 'G', 'C']}
         for donator, donator2, d1, d2, d3 in zip(D1.itertuples(), D3.itertuples(), D1['index'], D2['index'],
@@ -383,7 +383,6 @@ class CrossStacking(DNAForce):
             c1, c2 = self.crossStackingForces[d1t]
             a1t = _complement[d1t]
             param = cross_definition.loc[[(a1t, d1t, d3t)]].squeeze()
-            #raise ValueError(donator)
             parameters = [param['t03'] * _af,
                           param['T0CS_2'] * _af,
                           param['rng_cs2'],
@@ -391,11 +390,9 @@ class CrossStacking(DNAForce):
                           param['eps_cs2'],
                           param['alpha_cs2'],
                           param['Sigma_2']]
-            top_info = [ord(donator.chainID), int(donator.resSeq)]
-            assert isinstance(top_info[0], int)
-            assert isinstance(top_info[1], int)
-            atom_index_to_group_index[d1t][0]['donors'].update({(d1,d2,d3): c1.addDonor(d1, d2, d3, top_info)})
-            atom_index_to_group_index[d1t][1]['acceptors'].update({(d1,d2,d3): c2.addAcceptor(d1, d2, d3, parameters + top_info)})
+            seqid = [int(donator.seqid)]
+            groups[d1t][0]['donors'][(d1, d2, d3)] = c1.addDonor(d1, d2, d3, seqid)
+            groups[d1t][1]['acceptors'][(d1, d2, d3)] = c2.addAcceptor(d1, d2, d3, parameters + seqid)
             donors[d1t] += [d1]
 
         aceptors = {i: [] for i in ['A', 'T', 'G', 'C']}
@@ -413,36 +410,26 @@ class CrossStacking(DNAForce):
                           param['eps_cs1'],
                           param['alpha_cs1'],
                           param['Sigma_1']]
-            top_info = [ord(aceptor.name), int(aceptor.resSeq)]
-            assert isinstance(top_info[0], int)
-            assert isinstance(top_info[1], int)
-            atom_index_to_group_index[_complement[a1t]][0]['acceptors'].update({(a1,a2,a3): c1.addAcceptor(a1, a2, a3, parameters + top_info)})
-            atom_index_to_group_index[_complement[a1t]][1]['donors'].update({(a1,a2,a3): c2.addDonor(a1, a2, a3, top_info)})
-            aceptors[_complement[a1t]] += [a1]
+            seqid = [int(aceptor.seqid)]
+            groups[d1t][0]['acceptors'][(a1, a2, a3)] = c1.addAcceptor(a1, a2, a3, parameters + seqid)
+            groups[d1t][1]['donors'][(a1, a2, a3)] = c2.addDonor(a1, a2, a3, seqid)
+            aceptors[d1t] += [a1]
 
-        # Close-in-sequence donors/acceptors mathematically have 0 energy
-        # (due to the seqsep condition),
-        # but there could be numerical issues with evaluating the finite
-        # but huge morse potential at short distances before multiplying by 0.
-        # Also, donor-acceptor pairs sharing (a) common atom(s) 
-        # could have issues differentiating the potential, as described in
-        # https://github.com/cabb99/openawsem/issues/94.
-        # So we will build a small pair exclusion list only for 
-        # donor-acceptor pairs with (a) common atom(s).
-        for force_type in self.crossStackingForces:
-            forces = self.crossStackingForces[force_type]
-            for force_index in [0,1]: # forces list should only have two elements
-                donor_dict = atom_index_to_group_index[force_type][force_index]['donors']
-                acceptor_dict = atom_index_to_group_index[force_type][force_index]['acceptors']
-                for donor in donor_dict:
-                    for acceptor in acceptor_dict:
-                        # donor and acceptor are tuples of openmm particle indices
-                        # donor: (d1,d2,d3)
-                        # acceptor: (a1,a2,a3)
-                        if not set(donor).isdisjoint(set(acceptor)): # checks that set intersection is not empty
-                            forces[force_index].addExclusion(donor_dict[donor], acceptor_dict[acceptor]) # get donor/acceptor indices
-            self.crossStackingForces[force_type] = forces
-        
+        # The sequence separation mask already sets the energy of close-in-sequence pairs to zero,
+        # but a donor and an acceptor that share a particle define a degenerate geometry whose
+        # angles and derivatives are undefined (https://github.com/cabb99/openawsem/issues/94), so
+        # those few pairs still need an exclusion.
+        for base, forces in self.crossStackingForces.items():
+            for force, force_groups in zip(forces, groups[base]):
+                acceptors_by_particle = {}
+                for particles, acceptor_index in force_groups['acceptors'].items():
+                    for particle in particles:
+                        acceptors_by_particle.setdefault(particle, set()).add(acceptor_index)
+                for particles, donor_index in force_groups['donors'].items():
+                    shared = set().union(*[acceptors_by_particle.get(p, set()) for p in particles])
+                    for acceptor_index in sorted(shared):
+                        force.addExclusion(donor_index, acceptor_index)
+
     def addForce(self, system):
         for c1, c2 in self.crossStackingForces.values():
             system.addForce(c1)
@@ -464,29 +451,25 @@ class Exclusion(DNAForce, openmm.CustomNonbondedForce):
         self.k = k
         self.k_name = k_name or 'k_exclusion'
         self.force_group = force_group
-        # moves pair exclusions into the hamiltonian
-        # so we don't need to use the openmm exclusion list;
-        # also applies a minimum sequence separation of 5,
-        # consistent with the lammps 3SPN2 code
-        # (actually, we'll use 2 to be consistent with the regular Exclusion term)
+        # Pairs closer than min_seq_sep residues along a chain are masked in the energy expression;
+        # masking one residue (min_seq_sep=2) reproduces the intra-residue and neighboring-residue
+        # exclusions of 3SPN2.
         self.min_seq_sep = 2
         super().__init__(dna)
 
     def reset(self):
-        # Complementary base pairs are excluded in-expression via `mask` (0 when bt1+bt2 == 5), so a
-        # masked pair contributes 0 energy and 0 force -- identical to an addExclusion, but without
-        # putting the base-pair exclusions into the shared exclusion list.
+        # `mask` is 0 for complementary base pairs (bt1+bt2 == 5) and `seqsep` is 0 for pairs close
+        # in sequence, so those pairs contribute no energy and no force.
         exclusionForce = openmm.CustomNonbondedForce(f"""{self.k_name}*mask*seqsep*core;
                          core=(epsilon*((sigma/r)^12-2*(sigma/r)^6)+epsilon)*step(sigma-r);
-                         seqsep=max(1-delta(chainID1-chainID2),step(abs(resSeq2-resSeq1)-{self.min_seq_sep}));
+                         seqsep=step(abs(seqid2-seqid1)-{self.min_seq_sep});
                          mask=1-step(bt1+bt2-4.5)*step(5.5-bt1-bt2);
                          sigma=0.5*(sigma1+sigma2);
                          epsilon=sqrt(epsilon1*epsilon2)""")
         exclusionForce.addPerParticleParameter('epsilon')
         exclusionForce.addPerParticleParameter('sigma')
         exclusionForce.addPerParticleParameter('bt')
-        exclusionForce.addPerParticleParameter('chainID')
-        exclusionForce.addPerParticleParameter('resSeq')
+        exclusionForce.addPerParticleParameter('seqid')
         exclusionForce.addGlobalParameter(self.k_name, self.k)
         exclusionForce.setCutoffDistance(1.8)
         exclusionForce.setForceGroup(self.force_group)  # There can not be multiple cutoff distance on the same force group
@@ -508,14 +491,14 @@ class Exclusion(DNAForce, openmm.CustomNonbondedForce):
         is_dna = self.dna.atoms['resname'].isin(_dnaResidues)
         atoms = self.dna.atoms.copy()
         atoms['is_dna'] = is_dna
+        atoms['seqid'] = chained_sequence_index(atoms)
         for i, atom in atoms.iterrows():
             if atom.is_dna:
                 param = particle_definition.loc[atom['name']]
-                parameters = [param.epsilon, param.radius, _base_type.get(atom['name'], 0), ord(atom.chainID), int(atom.resSeq)]
+                parameters = [param.epsilon, param.radius, _base_type.get(atom['name'], 0)]
             else:
-                parameters = [0, .1, 0, 0, 0]  # Null energy, some radius, non-base, some chain, some residue
-            self.force.addParticle(parameters)
-
+                parameters = [0, .1, 0]  # Null energy, some radius, non-base
+            self.force.addParticle(parameters + [int(atom.seqid)])
 
 
 class Electrostatics(DNAForce, openmm.CustomNonbondedForce):
@@ -525,11 +508,9 @@ class Electrostatics(DNAForce, openmm.CustomNonbondedForce):
         self.force_group = force_group
         self.T = temperature
         self.C = salt_concentration
-        # moves pair exclusions into the hamiltonian
-        # so we don't need to use the openmm exclusion list;
-        # also applies a minimum sequence separation of 5,
-        # consistent with the lammps 3SPN2 code
-        # (actually, we'll use 2 to be consistent with the regular Exclusion term)
+        # Pairs closer than min_seq_sep residues along a chain are masked in the energy expression;
+        # masking one residue (min_seq_sep=2) reproduces the intra-residue and neighboring-residue
+        # exclusions of 3SPN2.
         self.min_seq_sep = 2
         super().__init__(dna)
 
@@ -554,10 +535,9 @@ class Electrostatics(DNAForce, openmm.CustomNonbondedForce):
 
         electrostaticForce = openmm.CustomNonbondedForce(f"""{self.k_name}*seqsep*energy;
                                                                 energy=q1*q2*exp(-r/dh_length)/denominator/r;
-                                                                seqsep=max(1-delta(chainID1-chainID2),step(abs(resSeq2-resSeq1)-{self.min_seq_sep}));""")
+                                                                seqsep=step(abs(seqid2-seqid1)-{self.min_seq_sep});""")
         electrostaticForce.addPerParticleParameter('q')
-        electrostaticForce.addPerParticleParameter('chainID')
-        electrostaticForce.addPerParticleParameter('resSeq')
+        electrostaticForce.addPerParticleParameter('seqid')
         electrostaticForce.addGlobalParameter('dh_length', ldby)
         electrostaticForce.addGlobalParameter('denominator', denominator)
         electrostaticForce.addGlobalParameter(self.k_name, self.k)
@@ -579,12 +559,13 @@ class Electrostatics(DNAForce, openmm.CustomNonbondedForce):
         is_dna = self.dna.atoms['resname'].isin(_dnaResidues)
         atoms = self.dna.atoms.copy()
         atoms['is_dna'] = is_dna
+        atoms['seqid'] = chained_sequence_index(atoms)
 
         for i, atom in atoms.iterrows():
             if atom.is_dna:
                 param = particle_definition.loc[atom['name']]
-                parameters = [param.charge, ord(atom.chainID), int(atom.resSeq)]
+                parameters = [param.charge]
             else:
-                parameters = [0, 0, 0]  # No charge if it is not DNA, some chain, some residue
+                parameters = [0]  # No charge if it is not DNA
             # print (i,parameters)
-            self.force.addParticle(parameters)
+            self.force.addParticle(parameters + [int(atom.seqid)])

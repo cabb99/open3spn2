@@ -92,21 +92,13 @@ for force_name in open3SPN2.protein_dna_forces:
     s.addForce(force)
     forces[force_name] = force
 
-#Fix exclussions
+#Add protein forces
 for force_name in openAWSEMforces:
     # print(force_name)
     if force_name in ['contact']:
-        force = openAWSEMforces[force_name](protein, 
+        force = openAWSEMforces[force_name](protein,
                                             withExclusion=False,
                                             periodic=False)
-        # print(force.getNumExclusions())
-        open3SPN2.addNonBondedExclusions(dna,force)
-        # print(force.getNumExclusions())
-    elif force_name in ['Excl']:
-        force = openAWSEMforces[force_name](protein)
-        # print(force.getNumExclusions())
-        open3SPN2.addNonBondedExclusions(dna,force)
-        # print(force.getNumExclusions())
     else:
         force = openAWSEMforces[force_name](protein)
     s.addForce(force)
