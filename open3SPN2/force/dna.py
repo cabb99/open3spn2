@@ -502,12 +502,15 @@ class Exclusion(DNAForce, openmm.CustomNonbondedForce):
 
 
 class Electrostatics(DNAForce, openmm.CustomNonbondedForce):
-    def __init__(self, dna, k=1, k_name=None, force_group=13, temperature=300*unit.kelvin, salt_concentration=100*unit.millimolar):
+    def __init__(self, dna, k=1, k_name=None, force_group=13, temperature=300*unit.kelvin, salt_concentration=100*unit.millimolar,
+                       ldby=None, cutoff_distance=None):
         self.k = k
         self.k_name = k_name or 'k_electrostatics'
         self.force_group = force_group
         self.T = temperature
         self.C = salt_concentration
+        self.ldby = ldby
+        self.cutoff_distance = cutoff_distance
         # Pairs closer than min_seq_sep residues along a chain are masked in the energy expression;
         # masking one residue (min_seq_sep=2) reproduces the intra-residue and neighboring-residue
         # exclusions of 3SPN2.
@@ -535,7 +538,7 @@ class Electrostatics(DNAForce, openmm.CustomNonbondedForce):
         ldby = ldby.in_units_of(unit.nanometer)
 
         if self.cutoff_distance == None:
-            cutoff_distance = 5
+            cutoff_distance = 5 * unit.nanometer
         else:
             cutoff_distance = self.cutoff_distance
 
