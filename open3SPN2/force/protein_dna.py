@@ -173,7 +173,7 @@ class ElectrostaticsProteinDNA(ProteinDNAForce):
 
 class AMHgoProteinDNA(ProteinDNAForce):
     """ Protein-DNA amhgo potential"""
-    def __init__(self, dna, protein, chain_protein='A', chain_DNA='B', k_amhgo_PD=1*unit.kilocalorie_per_mole, sigma_sq=0.05*unit.nanometers**2, aaweight=False, globalct=True, cutoff=1.8, force_group=16):
+    def __init__(self, dna, protein, chain_protein='A', chain_DNA='B', k_amhgo_PD=1*unit.kilocalorie_per_mole, sigma_sq=0.05*unit.nanometers**2, aaweight=False, globalct=True, cutoff=1.8, force_g[...]
         self.force_group = force_group
         self.k_amhgo_PD = k_amhgo_PD
         self.sigma_sq= sigma_sq
@@ -211,10 +211,10 @@ class AMHgoProteinDNA(ProteinDNAForce):
             else:
                 gamma_ij = 1.0
             if (self.chain_protein, int(contact_list[i][0]), 'CB') in atoms.index:
-                 CB_protein = atoms[(atoms['chainID'] == self.chain_protein) & (atoms['resSeq'] == int(contact_list[i][0])) & (atoms['name'] == 'CB') & atoms['resname'].isin(_proteinResidues)].copy()
+                 CB_protein = atoms[(atoms['chainID'] == self.chain_protein) & (atoms['resSeq'] == int(contact_list[i][0])) & (atoms['name'] == 'CB') & atoms['resname'].isin(_proteinResidues)].co[...]
             else:
-                 CB_protein = atoms[(atoms['chainID'] == self.chain_protein) & (atoms['resSeq'] == int(contact_list[i][0])) & (atoms['name'] == 'CA') & atoms['resname'].isin(_proteinResidues)].copy()
-            base_DNA = atoms[(atoms['chainID'] == self.chain_DNA) & (atoms['resSeq'] == int(contact_list[i][1])) & (atoms['name'].isin(['A', 'T', 'G', 'C'])) & atoms['resname'].isin(_dnaResidues)].copy()
+                 CB_protein = atoms[(atoms['chainID'] == self.chain_protein) & (atoms['resSeq'] == int(contact_list[i][0])) & (atoms['name'] == 'CA') & atoms['resname'].isin(_proteinResidues)].co[...]
+            base_DNA = atoms[(atoms['chainID'] == self.chain_DNA) & (atoms['resSeq'] == int(contact_list[i][1])) & (atoms['name'].isin(['A', 'T', 'G', 'C'])) & atoms['resname'].isin(_dnaResidues)[...]
             r_ijN = contact_list[i][2]/10.0*unit.nanometers
             self.force.addBond(int(CB_protein['index'].values[0]), int(base_DNA['index'].values[0]), [gamma_ij, r_ijN])
             print(int(CB_protein['index'].values[0]), int(base_DNA['index'].values[0]), [gamma_ij, r_ijN])
@@ -259,20 +259,20 @@ class AMHgoProteinDNA(ProteinDNAForce):
 #            else:
 #                 CB_protein = atoms[(atoms['chainID'] == self.chain_protein) & (atoms['resSeq'] == int(contact_list[i][0])) &
 #                                    (atoms['name'] == 'CA') & atoms['resname'].isin(_proteinResidues)].copy()
-#            base_DNA = atoms[(atoms['chainID'] == self.chain_DNA) & (atoms['resSeq'] == int(contact_list[i][1])) & (atoms['name'].isin(['A', 'T', 'G', 'C'])) & atoms['resname'].isin(_dnaResidues)].copy()
+#            base_DNA = atoms[(atoms['chainID'] == self.chain_DNA) & (atoms['resSeq'] == int(contact_list[i][1])) & (atoms['name'].isin(['A', 'T', 'G', 'C'])) & atoms['resname'].isin(_dnaResidues[...]
 #            r_ijN = contact_list[i][2]/10.0*unit.nanometers
 #            self.force.addBond(int(CB_protein['index'].values[0]), int(base_DNA['index'].values[0]), [gamma_ij, r_ijN])
 #            print(int(CB_protein['index'].values[0]), int(base_DNA['index'].values[0]), [gamma_ij, r_ijN])
 
 class StringProteinDNA(ProteinDNAForce):
     """ Protein-DNA string potential (Xinyu)"""
-    def __init__(self, dna, protein, r0, chain_protein='A', chain_DNA='B', k_string_PD=10*4.184, protein_seg=False, group=[]):
+    def __init__(self, dna, protein, r0, chain_protein='A', chain_DNA='B', k_string_PD=10*4.184, protein_seg=False, group=None):
         self.k_string_PD = k_string_PD
         self.chain_protein = chain_protein
         self.chain_DNA = chain_DNA
         self.r0 = r0
         self.protein_seg = protein_seg
-        self.group = group
+        self.group = list(group) if group is not None else []
         super().__init__(dna, protein)
 
     def reset(self):
@@ -300,12 +300,12 @@ class StringProteinDNA(ProteinDNAForce):
 
 class String_length_ProteinDNA(ProteinDNAForce):
     """ Protein-DNA string potential (Xinyu)"""
-    def __init__(self, dna, protein, chain_protein='A', chain_DNA='B', protein_seg=False, group=[], force_group=17):
+    def __init__(self, dna, protein, chain_protein='A', chain_DNA='B', protein_seg=False, group=None, force_group=17):
         self.force_group = force_group
         self.chain_protein = chain_protein
         self.chain_DNA = chain_DNA
         self.protein_seg = protein_seg
-        self.group = group
+        self.group = list(group) if group is not None else []
         super().__init__(dna, protein)
 
     def reset(self):
