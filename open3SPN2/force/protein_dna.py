@@ -346,7 +346,7 @@ class proteinBasePairPosition(ProteinDNAForce):
 
 class AMHgoProteinDNA(ProteinDNAForce):
     """ Protein-DNA amhgo potential"""
-    def __init__(self, dna, protein, chain_protein='A', chain_DNA='B', k_amhgo_PD=1*unit.kilocalorie_per_mole, sigma_sq=0.05*unit.nanometers**2, aaweight=False, globalct=True, cutoff=1.8, force_g[...]
+    def __init__(self, dna, protein, chain_protein='A', chain_DNA='B', k_amhgo_PD=1*unit.kilocalorie_per_mole, sigma_sq=0.05*unit.nanometers**2, aaweight=False, globalct=True, cutoff=1.8, force_group=16):
         self.force_group = force_group
         self.k_amhgo_PD = k_amhgo_PD
         self.sigma_sq= sigma_sq
@@ -384,10 +384,10 @@ class AMHgoProteinDNA(ProteinDNAForce):
             else:
                 gamma_ij = 1.0
             if (self.chain_protein, int(contact_list[i][0]), 'CB') in atoms.index:
-                 CB_protein = atoms[(atoms['chainID'] == self.chain_protein) & (atoms['resSeq'] == int(contact_list[i][0])) & (atoms['name'] == 'CB') & atoms['resname'].isin(_proteinResidues)].co[...]
+                 CB_protein = atoms[(atoms['chainID'] == self.chain_protein) & (atoms['resSeq'] == int(contact_list[i][0])) & (atoms['name'] == 'CB') & atoms['resname'].isin(_proteinResidues)].copy()
             else:
-                 CB_protein = atoms[(atoms['chainID'] == self.chain_protein) & (atoms['resSeq'] == int(contact_list[i][0])) & (atoms['name'] == 'CA') & atoms['resname'].isin(_proteinResidues)].co[...]
-            base_DNA = atoms[(atoms['chainID'] == self.chain_DNA) & (atoms['resSeq'] == int(contact_list[i][1])) & (atoms['name'].isin(['A', 'T', 'G', 'C'])) & atoms['resname'].isin(_dnaResidues)[...]
+                 CB_protein = atoms[(atoms['chainID'] == self.chain_protein) & (atoms['resSeq'] == int(contact_list[i][0])) & (atoms['name'] == 'CA') & atoms['resname'].isin(_proteinResidues)].copy()
+            base_DNA = atoms[(atoms['chainID'] == self.chain_DNA) & (atoms['resSeq'] == int(contact_list[i][1])) & (atoms['name'].isin(['A', 'T', 'G', 'C'])) & atoms['resname'].isin(_dnaResidues)].copy()
             r_ijN = contact_list[i][2]/10.0*unit.nanometers
             self.force.addBond(int(CB_protein['index'].values[0]), int(base_DNA['index'].values[0]), [gamma_ij, r_ijN])
             print(int(CB_protein['index'].values[0]), int(base_DNA['index'].values[0]), [gamma_ij, r_ijN])
@@ -432,7 +432,7 @@ class AMHgoProteinDNA(ProteinDNAForce):
 #            else:
 #                 CB_protein = atoms[(atoms['chainID'] == self.chain_protein) & (atoms['resSeq'] == int(contact_list[i][0])) &
 #                                    (atoms['name'] == 'CA') & atoms['resname'].isin(_proteinResidues)].copy()
-#            base_DNA = atoms[(atoms['chainID'] == self.chain_DNA) & (atoms['resSeq'] == int(contact_list[i][1])) & (atoms['name'].isin(['A', 'T', 'G', 'C'])) & atoms['resname'].isin(_dnaResidues[...]
+#            base_DNA = atoms[(atoms['chainID'] == self.chain_DNA) & (atoms['resSeq'] == int(contact_list[i][1])) & (atoms['name'].isin(['A', 'T', 'G', 'C'])) & atoms['resname'].isin(_dnaResidues].copy()
 #            r_ijN = contact_list[i][2]/10.0*unit.nanometers
 #            self.force.addBond(int(CB_protein['index'].values[0]), int(base_DNA['index'].values[0]), [gamma_ij, r_ijN])
 #            print(int(CB_protein['index'].values[0]), int(base_DNA['index'].values[0]), [gamma_ij, r_ijN])
