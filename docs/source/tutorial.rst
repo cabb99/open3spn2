@@ -138,6 +138,59 @@ The forces and system in open3SPN can be treated as forces and systems from open
 .. ----------------------
 
 
+Circular DNA (plasmids)
+-----------------------
+A circular DNA is a chain whose last residue is bonded to its first one. Pass ``circular=True`` (or a
+list of chain identifiers) when creating the DNA and the bonds, angles, stackings, dihedrals and cross
+stackings that cross the end of the chain are added, and the sequence separation masks of the
+nonbonded forces count residues around the circle. The forcefield does not read bonds from the pdb
+file, so a circular structure loaded without this option behaves as a linear one and opens up during
+the simulation.
+
+From a sequence, the duplex is built and bent into a planar circle on the xy plane. The twist is
+adjusted so the circle has an integer linking number ``Lk = Lk0 + delta_linking_number``, where
+``Lk0`` is the number of helical turns of the relaxed duplex. Negative values build negatively
+supercoiled (underwound) DNA and positive values positively supercoiled DNA; the excess twist of
+the planar circle converts partially to writhe during the simulation.
+
+.. code:: python
+
+    import open3SPN2
+
+    seq = 'ATACAAAGGTGCGAGGTTTC' * 25  # 500 bp
+    dna = open3SPN2.DNA.fromSequence(seq, circular=True, delta_linking_number=-3,
+                                     output_pdb='plasmid.pdb', atomistic_template='plasmid_atomistic.pdb')
+    # or superhelical_density=-0.06 instead of delta_linking_number
+    print(dna.bend.radius, dna.bend.relaxed_linking_number, dna.bend.linking_number)
+
+    dna.periodic = False
+    s = open3SPN2.System(dna, periodicBox=None)
+    s.add3SPN2forces()
+    simulation = s.initializeMD(platform_name='OpenCL')
+    simulation.minimizeEnergy()
+
+From an existing structure, ``fromPDB`` and ``fromCoarsePDB`` take the same option. If the ends of a
+duplex are already next to each other (e.g. a plasmid structure) the DNA is only closed, adding the
+phosphate of the first residue if missing; if the ends are apart (a straight duplex) it is bent into
+a circle first. Use ``bend=True`` or ``bend=False`` to force either behavior.
+
+.. code:: python
+
+    plasmid = open3SPN2.DNA.fromPDB('atomistic_plasmid.pdb', circular=True)
+    plasmid = open3SPN2.DNA.fromCoarsePDB('coarse_grained_plasmid.pdb', circular=True, output_pdb='clean.pdb')
+    bent = open3SPN2.DNA.fromPDB('straight_duplex.pdb', circular=True, delta_linking_number=-2)
+
+The linking number of the two strands is a topological invariant; ``dna.computeLinkingNumber(positions)``
+measures it on any frame (in the units of the structure) and is a quick check that the plasmid keeps
+its topology.
+
+The strands can also be joined end to end before closing them with ``join=[['A', 'B']]``, which bonds
+the 3' end of strand A to the 5' end of strand B (and strand B to strand A when ``circular=True``).
+The result is a single circular strand that runs along both sides of the duplex. The joints span the
+width of the duplex, so minimize the energy before running dynamics.
+
+``DNA.circularize`` and ``DNA.bendToCircle`` perform the two steps on an existing DNA object.
+
 Alchemical base transformations
 -------------------------------
 Because every nucleotide in 3SPN.2 is represented by the same three beads (phosphate, sugar and a
