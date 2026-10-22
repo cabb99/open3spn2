@@ -502,12 +502,15 @@ class Exclusion(DNAForce, openmm.CustomNonbondedForce):
 
 
 class Electrostatics(DNAForce, openmm.CustomNonbondedForce):
-    def __init__(self, dna, k=1, k_name=None, force_group=13, temperature=300*unit.kelvin, salt_concentration=100*unit.millimolar):
+    def __init__(self, dna, k=1, k_name=None, force_group=13, temperature=300*unit.kelvin, salt_concentration=100*unit.millimolar,
+                       ldby=None, cutoff_distance=None):
         self.k = k
         self.k_name = k_name or 'k_electrostatics'
         self.force_group = force_group
         self.T = temperature
         self.C = salt_concentration
+        self.ldby = ldby
+        self.cutoff_distance = cutoff_distance
         # Pairs closer than min_seq_sep residues along a chain are masked in the energy expression;
         # masking one residue (min_seq_sep=2) reproduces the intra-residue and neighboring-residue
         # exclusions of 3SPN2.
@@ -527,8 +530,19 @@ class Electrostatics(DNAForce, openmm.CustomNonbondedForce):
         ec = 1.60217653E-19 * unit.coulomb  # proton charge
         pv = 8.8541878176E-12 * unit.farad / unit.meter  # dielectric permittivity of vacuum
 
-        ldby = np.sqrt(dielectric * pv * kb * T / (2.0 * Na * ec ** 2 * C))
+
+        if self.ldby is None:
+            ldby = np.sqrt(dielectric * pv * kb * T / (2.0 * Na * ec ** 2 * C))
+        else:
+            ldby = self.ldby
         ldby = ldby.in_units_of(unit.nanometer)
+
+        if self.cutoff_distance == None:
+            cutoff_distance = 5 * unit.nanometer
+        else:
+            cutoff_distance = self.cutoff_distance
+
+        cutoff_nm = cutoff_distance.value_in_unit(unit.nanometer)
         denominator = 4 * np.pi * pv * dielectric / (Na * ec ** 2)
         denominator = denominator.in_units_of(unit.kilocalorie_per_mole**-1 * unit.nanometer**-1)
         #print(ldby, denominator)
@@ -542,7 +556,9 @@ class Electrostatics(DNAForce, openmm.CustomNonbondedForce):
         electrostaticForce.addGlobalParameter('denominator', denominator)
         electrostaticForce.addGlobalParameter(self.k_name, self.k)
 
-        electrostaticForce.setCutoffDistance(5)
+
+        electrostaticForce.setCutoffDistance(cutoff_nm)
+        print(f"dna screening length {ldby} nm")
         if self.periodic:
             electrostaticForce.setNonbondedMethod(electrostaticForce.CutoffPeriodic)
         else:
