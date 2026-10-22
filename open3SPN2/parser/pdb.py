@@ -112,7 +112,7 @@ def pdb2table(pdb):
         chain = residue.chain
         pos = pos.value_in_unit(unit.angstrom)
         data += [dict(zip(cols, ['ATOM', int(atom.id), atom.name, '',
-                                 residue.name, chain.id, int(residue.id), '',
+                                 residue.name, chain.id, int(residue.id), residue.insertionCode.strip(),
                                  pos[0], pos[1], pos[2], 0, 0,
                                  atom.element.symbol, '']))]
     atom_list = pandas.DataFrame(data)

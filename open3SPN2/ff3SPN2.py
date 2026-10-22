@@ -33,10 +33,10 @@ _af = 1 * unit.degree / unit.radian  # angle scaling factor
 _complement = {'A': 'T', 'T': 'A', 'G': 'C', 'C': 'G'}
 _dnaResidues = ['DA', 'DC', 'DT', 'DG']
 _proteinResidues = ['IPR', 'IGL', 'NGP']
-# Heavy atoms (PDB v3 names) of each coarse-grained bead. 
-# Phosphate O3', OP3 and the phosphate of the first nucleotide are not included in the phosphate bead.
-# The sugar bead includes O2' for RNA but is not included.
-_bead_atoms = {'P': ['P', 'OP1', 'OP2', "O5'"],
+# Heavy atoms (PDB v3 names) of each coarse-grained bead. The phosphate bead is the phosphate group bridging two
+# sugars, so its O3' comes from the previous nucleotide. The OP3 of a 5'-phosphate and the O2' of RNA are in no
+# bead, so DNA, RNA and chain ends are coarse-grained with the same atoms.
+_bead_atoms = {'P': ["O3'", 'P', 'OP1', 'OP2', "O5'"],
                'S': ["C5'", "C4'", "O4'", "C3'", "C2'", "C1'"],
                'A': ['N9', 'C8', 'N7', 'C5', 'C6', 'N6', 'N1', 'C2', 'N3', 'C4'],
                'G': ['N9', 'C8', 'N7', 'C5', 'C6', 'O6', 'N1', 'C2', 'N2', 'N3', 'C4'],
@@ -173,12 +173,12 @@ class DNA(object):
 
         atomistic=pandas.concat(forward_strand+reverse_strand)
         atomistic['serial']=atomistic.index+1
+        if not self.checkAtoms(atomistic).empty:
+            atomistic = fixTable(atomistic)
         self.template=atomistic
         if atomistic_template:
             writePDB(atomistic,pdb_file=atomistic_template)
 
-        if not self.checkAtoms(atomistic).empty:
-            atomistic = fixTable(atomistic)
         template = self.CoarseGrain(atomistic)
         if Coarse_template:
             writePDB(template,pdb_file=Coarse_template)
@@ -439,7 +439,7 @@ class DNA(object):
         """Initializes a DNA object from a table of coarse-grained atoms, such as the one returned by CoarseGrain.
         The atoms are written to output_pdb unless it is None."""
         self = cls()
-        self.atoms = atoms
+        self.atoms = atoms.copy()
         self.DNAtype = dna_type
         if compute_topology:
             self.computeTopology(template_from_X3DNA=template_from_X3DNA)
@@ -467,7 +467,7 @@ class DNA(object):
         """ Returns a table of the heavy atoms of the nucleotides in an atom table that have no coarse-grained bead
         (problem 'unmapped') or that are expected but absent (problem 'missing'). The phosphate bead of the first
         nucleotide and the O3' of the last nucleotide of each chain may be absent, because 3SPN2 drops them."""
-        sugar = _bead_atoms['S'] + (["O2'"] if rna else [])
+        own_phosphate = set(_bead_atoms['P']) - {"O3'"}
         residues = ['A', 'U', 'G', 'C'] if rna else ['DA', 'DT', 'DG', 'DC']
         atoms = pdb_table[pdb_table['resname'].isin(residues) & (pdb_table['element'].str.strip() != 'H')]
         problems = []
@@ -475,12 +475,12 @@ class DNA(object):
             first, last = chain_atoms['resSeq'].min(), chain_atoms['resSeq'].max()
             for (resSeq, resname), residue in chain_atoms.groupby(['resSeq', 'resname']):
                 present = set(residue['name'])
-                required = set(sugar + _bead_atoms[resname[-1]])
+                required = set(_bead_atoms['S'] + _bead_atoms[resname[-1]])
                 if resSeq != first:
-                    required |= set(_bead_atoms['P'])
+                    required |= own_phosphate
                 if resSeq != last:
                     required.add("O3'")
-                allowed = required | set(_bead_atoms['P']) | {"O3'", 'OP3'}
+                allowed = required | set(_bead_atoms['P']) | {'OP3'} | ({"O2'"} if rna else set())
                 problems += [(chain, resSeq, resname, name, 'unmapped') for name in sorted(present - allowed)]
                 problems += [(chain, resSeq, resname, name, 'missing') for name in sorted(required - present)]
         return pandas.DataFrame(problems, columns=['chainID', 'resSeq', 'resname', 'name', 'problem'])
@@ -491,10 +491,7 @@ class DNA(object):
         masses = {"H": 1.00794, "C": 12.0107, "N": 14.0067, "O": 15.9994, "P": 30.973762, }
         CG = {name: bead for bead in ['P', 'S'] for name in _bead_atoms[bead]}
         CG.update({name: 'B' for base in ['A', 'G', 'C', 'T', 'U'] for name in _bead_atoms[base]})
-        CG.update({"O3'": 'P', 'OP3': 'P'})
-        if rna:
-            CG.update({"O2\'": 'S'})
-        cols = ['recname', 'serial', 'name', 'altLoc',
+        cols =['recname', 'serial', 'name', 'altLoc',
                 'resname', 'chainID', 'resSeq', 'iCode',
                 'x', 'y', 'z', 'occupancy', 'tempFactor',
                 'element', 'charge', 'type']
@@ -505,6 +502,15 @@ class DNA(object):
             temp = temp[temp['resname'].isin(['A', 'U', 'G', 'C'])]
         else:
             temp = temp[temp['resname'].isin(['DA', 'DT', 'DG', 'DC'])]
+
+        # Number residues with insertion codes right after the residue they are inserted at
+        if 'iCode' in temp:
+            temp['iCode'] = temp['iCode'].fillna('').astype(str).str.strip()
+            residues = temp[['chainID', 'resSeq', 'iCode']].drop_duplicates()
+            insertions = (residues['iCode'] != '').groupby(residues['chainID']).cumsum()
+            shift = dict(zip(residues.itertuples(index=False, name=None), insertions))
+            temp['resSeq'] = temp['resSeq'] + [shift[key] for key in temp[['chainID', 'resSeq', 'iCode']].itertuples(index=False, name=None)]
+            temp['iCode'] = ''
 
         problems = DNA.checkAtoms(temp, rna=rna)
         if not problems.empty:
@@ -548,7 +554,7 @@ class DNA(object):
         Coarse['type'] = Coarse['name']
         # Set element (depends on base)
         if rna:
-            Coarse['name'] = Coarse['name'].replace({'S', 'Sr'})
+            Coarse['name'] = Coarse['name'].replace({'S': 'Sr'})
         Coarse['element'] = Coarse['name'].replace({'P': 'P', 'S': 'H', 'Sr': 'D',
                                                     'A': 'N', 'T': 'S', 'U': 'S', 'G': 'C', 'C': 'O'})
         # Remove P from the beginning

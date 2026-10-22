@@ -15,6 +15,11 @@ tested here:
   sent through pdbfixer.
 * fromAtoms builds a DNA from a coarse-grained table; fromSequence gives the same beads as the
   atomistic route through pdbfixer.
+* The base pair and base step parameters are symmetric under the duplex dyad, which lets mapTemplate take
+  every chain from one joined strand.
+* fromAtoms works on its own copy of the atom table; when computeGeometry repairs a template, the stored
+  and written atomistic template is the repaired one.
+* An OP3 on a 5' end changes no bead, and insertion-coded PDB files load.
 * A B_curved DNA built from sequence sits at the minimum of its bonds, angles and dihedrals.
 * The equilibrium values depend only on the sequence, not on the coordinates of the input structure.
 """
@@ -28,7 +33,7 @@ import pytest
 from openmm.app import PDBFile
 
 import open3SPN2
-from open3SPN2 import DNA, fixPDB, pdb2table, writePDB
+from open3SPN2 import DNA, fixPDB, fixTable, pdb2table, writePDB
 
 SEQUENCE = 'AACAGATCCGCTGGTTA'  # contains all 16 dinucleotide steps
 
@@ -118,12 +123,16 @@ def test_coarse_grain_warns_about_atoms_without_bead():
         DNA.CoarseGrain(unknown)
 
 
+LEGACY_NAMES = {'C7': 'C5M', 'OP1': 'O1P', 'OP2': 'O2P', "O5'": 'O5*', "C5'": 'C5*', "C4'": 'C4*',
+                "O4'": 'O4*', "C3'": 'C3*', "O3'": 'O3*', "C2'": 'C2*', "C1'": 'C1*'}
+
+
 def test_from_pdb_standardizes_legacy_atom_names(tmp_path):
-    """Feature: fromPDB standardizes atom names with pdbfixer, so a structure with legacy names
-    (C5M, O1P, O2P) gives the same beads as the ideal template, without coarse-graining warnings."""
+    """Feature: fromPDB standardizes legacy atom names (C5M, O1P, O2P and the * sugar names) with pdbfixer
+    without moving the atoms, so it gives the beads of the ideal template, without coarse-graining warnings."""
     beads, atomistic = _ideal_template()
     legacy = atomistic.reset_index(drop=True)
-    legacy['name'] = legacy['name'].replace({'C7': 'C5M', 'OP1': 'O1P', 'OP2': 'O2P'})
+    legacy['name'] = legacy['name'].replace(LEGACY_NAMES)
     writePDB(legacy, str(tmp_path / 'legacy.pdb'))
 
     with warnings.catch_warnings():
@@ -132,7 +141,24 @@ def test_from_pdb_standardizes_legacy_atom_names(tmp_path):
                           compute_topology=False)
 
     assert list(dna.atoms['name']) == list(beads['name'])
-    np.testing.assert_allclose(dna.atoms[['x', 'y', 'z']], beads[['x', 'y', 'z']], atol=1e-2)
+    np.testing.assert_allclose(dna.atoms[['x', 'y', 'z']], beads[['x', 'y', 'z']], atol=1e-3)
+
+
+def test_coarse_grain_warns_about_legacy_names_and_fix_table_restores_them():
+    """Feature: CoarseGrain expects PDB v3 names and warns, naming them, about legacy atom names it leaves
+    out; fixTable renames them without moving the atoms, after which the beads match the ideal template."""
+    beads, atomistic = _ideal_template()
+    legacy = atomistic.reset_index(drop=True)
+    legacy['name'] = legacy['name'].replace(LEGACY_NAMES)
+
+    with pytest.warns(UserWarning, match=r"C5\*.*O1P|O1P.*C5\*"):
+        DNA.CoarseGrain(legacy)
+
+    with warnings.catch_warnings():
+        warnings.filterwarnings('error', message='Atoms do not match the coarse-grained beads')
+        repaired = DNA.CoarseGrain(fixTable(legacy))
+    assert list(repaired['name']) == list(beads['name'])
+    np.testing.assert_allclose(repaired[['x', 'y', 'z']], beads[['x', 'y', 'z']], atol=1e-3)
 
 
 def test_from_pdb_rebuilds_missing_atoms(tmp_path):
@@ -248,6 +274,158 @@ def test_from_sequence_matches_atomistic_route(tmp_path):
     reference = DNA.CoarseGrain(pdb2table(fixPDB(str(tmp_path / 'atomistic.pdb'))))
     assert list(dna.atoms['name']) == list(reference['name'])
     np.testing.assert_allclose(dna.atoms[['x', 'y', 'z']], reference[['x', 'y', 'z']], atol=1e-3)
+
+
+def test_geometry_parameters_are_symmetric_under_the_dyad():
+    """Feature: complementary base pairs and base steps have the same parameters, with the ones that change
+    sign under the duplex dyad (buckle, shear, tilt, shift) flipped. The strand geometry of a sequence then
+    equals that of its complementary strand, so mapTemplate can take every chain from one joined strand."""
+    dna = DNA()
+    dna.parseConfigurationFile()
+    pair = dna.config['Base Pair Geometry'].set_index('stea')
+    step = dna.config['Base Step Geometry'].copy()
+    step.index = step['stea'] + step['steb']
+    complement = {'A': 'T', 'T': 'A', 'G': 'C', 'C': 'G'}
+
+    for base, row in pair.iterrows():
+        partner = pair.loc[complement[base]]
+        np.testing.assert_allclose(row[['propeller', 'opening', 'stretch', 'stagger']].astype(float),
+                                   partner[['propeller', 'opening', 'stretch', 'stagger']].astype(float))
+        np.testing.assert_allclose(row[['buckle', 'shear']].astype(float), -partner[['buckle', 'shear']].astype(float))
+    for name, row in step.iterrows():
+        partner = step.loc[complement[name[1]] + complement[name[0]]]
+        np.testing.assert_allclose(row[['twist', 'roll', 'slide', 'rise']].astype(float),
+                                   partner[['twist', 'roll', 'slide', 'rise']].astype(float), err_msg=name)
+        np.testing.assert_allclose(row[['tilt', 'shift']].astype(float), -partner[['tilt', 'shift']].astype(float),
+                                   err_msg=name)
+
+
+def test_from_atoms_leaves_the_input_table_unchanged(tmp_path):
+    """Feature: fromAtoms works on its own copy of the atom table, so the caller's table keeps its index,
+    columns and chain IDs."""
+    beads, _ = _ideal_template()
+    table = beads.copy()
+    table['chainID'] = table['chainID'].map({'A': 1, 'B': 2})
+    table.index = table.index + 100
+    before = table.copy()
+
+    DNA.fromAtoms(table, output_pdb=str(tmp_path / 'clean.pdb'))
+
+    pandas.testing.assert_frame_equal(table, before)
+
+
+def test_compute_geometry_keeps_the_repaired_template(tmp_path, monkeypatch):
+    """Feature: when computeGeometry repairs a custom template, self.template and the atomistic_template file
+    hold the repaired atoms that the beads were built from."""
+    atomic = pandas.read_csv(Path(open3SPN2.__file__).parent / 'DNA_atomic.csv')
+    atomic['name'] = atomic['name'].replace({'C7': 'C5M'})
+    atomic.to_csv(tmp_path / 'DNA_atomic.csv', index=False)
+    monkeypatch.setattr(open3SPN2.ff3SPN2, '__location__', tmp_path)
+
+    dna = DNA()
+    dna.parseConfigurationFile()
+    dna.computeGeometry(pandas.Series(list(SEQUENCE)), atomistic_template=str(tmp_path / 'atomistic.pdb'))
+
+    assert DNA.checkAtoms(dna.template).empty
+    written = {line[12:16].strip() for line in (tmp_path / 'atomistic.pdb').read_text().splitlines()}
+    assert 'C7' in written and 'C5M' not in written
+
+
+MASSES = {'C': 12.0107, 'N': 14.0067, 'O': 15.9994, 'P': 30.973762}
+SUGAR = ["C5'", "C4'", "O4'", "C3'", "C2'", "C1'"]
+PHOSPHATE = ['P', 'OP1', 'OP2', "O5'"]
+
+
+def _center_of_mass(atoms):
+    masses = atoms['name'].str[0].map(MASSES).to_numpy()
+    return (atoms[['x', 'y', 'z']].to_numpy() * masses[:, None]).sum(axis=0) / masses.sum()
+
+
+def test_beads_are_centers_of_mass_of_their_atoms():
+    """Feature: the 3SPN2 convention (as in USER-3SPN2): the phosphate bead of a nucleotide is the phosphate
+    group bridging two sugars (O3' of the previous nucleotide, P, OP1, OP2, O5'), the sugar bead is C1'-C5'
+    and O4', and the base bead is the remaining heavy atoms; the 5' phosphate bead is dropped."""
+    beads, atomistic = _ideal_template()
+    table = atomistic.reset_index(drop=True)
+    for (chain, resseq), residue in table.groupby(['chainID', 'resSeq']):
+        residue_beads = beads[(beads['chainID'] == chain) & (beads['resSeq'] == resseq)].set_index('name')
+        base = residue['resname'].iloc[0][-1]
+        expected = {'S': _center_of_mass(residue[residue['name'].isin(SUGAR)]),
+                    base: _center_of_mass(residue[~residue['name'].isin(SUGAR + PHOSPHATE + ["O3'"])])}
+        previous_o3 = table[(table['chainID'] == chain) & (table['resSeq'] == resseq - 1) & (table['name'] == "O3'")]
+        if len(previous_o3):
+            expected['P'] = _center_of_mass(pandas.concat([previous_o3, residue[residue['name'].isin(PHOSPHATE)]]))
+        assert sorted(residue_beads.index) == sorted(expected)
+        for bead, position in expected.items():
+            np.testing.assert_allclose(residue_beads.loc[bead, ['x', 'y', 'z']].astype(float), position, atol=1e-9)
+
+
+def test_rna_coarse_grains_with_the_dna_beads():
+    """Feature: RNA is coarse-grained with the same atoms as DNA (O2' is in no bead), and its sugar beads are
+    named Sr as in the force field, without coarse-graining warnings."""
+    beads, atomistic = _ideal_template()
+    table = atomistic.reset_index(drop=True)
+    table = table[table['name'] != 'C7'].copy()
+    table['resname'] = table['resname'].map({'DA': 'A', 'DC': 'C', 'DG': 'G', 'DT': 'U'})
+    o2 = table[table['name'] == "C2'"].assign(name="O2'", element='O')
+    o2[['x', 'y', 'z']] += [0.9, -0.8, 0.6]
+    rna = pandas.concat([table, o2], ignore_index=True)
+
+    assert DNA.checkAtoms(rna, rna=True).empty
+    with warnings.catch_warnings():
+        warnings.filterwarnings('error', message='Atoms do not match the coarse-grained beads')
+        rna_beads = DNA.CoarseGrain(rna, rna=True)
+
+    assert list(rna_beads['name']) == ['Sr' if name == 'S' else 'U' if name == 'T' else name for name in beads['name']]
+    same_atoms = (beads['name'] != 'T').to_numpy()
+    np.testing.assert_allclose(rna_beads.loc[same_atoms, ['x', 'y', 'z']], beads.loc[same_atoms, ['x', 'y', 'z']],
+                               atol=1e-9)
+
+
+def test_coarse_grain_ignores_op3():
+    """Feature: the phosphate bead is the phosphate group bridging two sugars (O3' of the previous nucleotide,
+    P, OP1, OP2, O5'); the OP3 of a 5'-phosphate, at a chain end or at a nick inside a chain, changes no bead
+    and is not reported by checkAtoms."""
+    beads, atomistic = _ideal_template()
+    table = atomistic.reset_index(drop=True)
+    first = table.groupby('chainID')['resSeq'].transform('min') == table['resSeq']
+    nick = (table['chainID'] == 'A') & (table['resSeq'] == 9)
+    op3 = table[(first | nick) & (table['name'] == 'OP1')].assign(name='OP3')
+    op3[['x', 'y', 'z']] += [1.2, 0.3, -0.4]
+    table = pandas.concat([table, op3], ignore_index=True)
+
+    assert DNA.checkAtoms(table).empty
+    with warnings.catch_warnings():
+        warnings.filterwarnings('error', message='Atoms do not match the coarse-grained beads')
+        with_op3 = DNA.CoarseGrain(table)
+    assert list(with_op3['name']) == list(beads['name'])
+    np.testing.assert_allclose(with_op3[['x', 'y', 'z']], beads[['x', 'y', 'z']], atol=1e-9)
+
+
+def test_from_pdb_keeps_insertion_code_residues(tmp_path):
+    """Feature: residues with insertion codes are separate residues, numbered right after the residue they are
+    inserted at, so a structure numbered 8, 9, 9A, 10, ... gives the same beads and topology as one numbered
+    8, 9, 10, 11, ..."""
+    _, atomistic = _ideal_template()
+    writePDB(atomistic.reset_index(drop=True), str(tmp_path / 'plain.pdb'))
+
+    def renumber(line):
+        if not line.startswith('ATOM') or line[21] != 'A' or int(line[22:26]) < 10:
+            return line
+        resseq = int(line[22:26])
+        return line[:22] + (f'{9:>4}A' if resseq == 10 else f'{resseq - 1:>4} ') + line[27:]
+    lines = [renumber(line) for line in (tmp_path / 'plain.pdb').read_text().splitlines()]
+    (tmp_path / 'icode.pdb').write_text('\n'.join(lines) + '\n')
+
+    plain = DNA.fromPDB(str(tmp_path / 'plain.pdb'), output_pdb=str(tmp_path / 'plain_clean.pdb'))
+    icode = DNA.fromPDB(str(tmp_path / 'icode.pdb'), output_pdb=str(tmp_path / 'icode_clean.pdb'))
+
+    assert list(icode.atoms['name']) == list(plain.atoms['name'])
+    np.testing.assert_allclose(icode.atoms[['x', 'y', 'z']], plain.atoms[['x', 'y', 'z']], atol=1e-6)
+    for term, columns in [('bonds', ['aai', 'aaj', 'r0']), ('angles', ['aai', 'aaj', 'aak', 't0']),
+                          ('dihedrals', ['aai', 'aaj', 'aak', 'aal', 't0'])]:
+        pandas.testing.assert_frame_equal(getattr(icode, term)[columns].reset_index(drop=True),
+                                          getattr(plain, term)[columns].reset_index(drop=True))
 
 
 def test_b_curved_structure_is_at_bonded_minimum(tmp_path):
