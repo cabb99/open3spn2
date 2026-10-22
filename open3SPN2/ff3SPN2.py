@@ -429,7 +429,7 @@ class DNA(object):
     def writePDB(self, pdb_file='clean.pdb'):
         # Compute element fields
         element_ix = {'P': 'P', 'S': 'H', 'A': 'N', 'T': 'S', 'C': 'O', 'G': 'C'}  # Elements choosen to keep VMD colors
-        self.atoms.loc[:, 'element'] = [element_ix[atomType] for atomType in self.atoms['name']]
+        self.atoms['element'] = [element_ix[atomType] for atomType in self.atoms['name']]
         
         self.pdb_file = writePDB(self.atoms,pdb_file)
         return self.pdb_file
@@ -534,7 +534,7 @@ class DNA(object):
 
         # Calculate center of mass
         temp['element'] = temp['element'].str.strip()
-        temp['mass'] = temp.element.replace(masses).astype(float)
+        temp['mass'] = [masses[element] for element in temp['element']]
         temp[['x', 'y', 'z']] = (temp[['x', 'y', 'z']].T * temp['mass']).T[['x', 'y', 'z']]
         temp = temp[temp['element'] != 'H']  # Exclude hydrogens
         Coarse = temp.groupby(['chainID', 'resSeq', 'resname', 'group']).sum().reset_index()
@@ -592,7 +592,7 @@ class DNA(object):
     def fromXYZ(cls, xyz_file, dnatype='B_curved', template_from_X3DNA=True, output_pdb='clean.pdb', compute_topology=True):
         """ Initializes DNA object from xyz file (as seen on the examples) """
         # Parse the file
-        atoms = pandas.read_csv(xyz_file, delim_whitespace=True, skiprows=2,
+        atoms = pandas.read_csv(xyz_file, sep=r'\s+', skiprows=2,
                                 names=['name', 'x', 'y', 'z'])
 
         # Compute residues and chains
@@ -638,7 +638,7 @@ class System(openmm.System):
         self.top = openmm.app.PDBFile(dna.pdb_file).getTopology()
         if self.top.getUnitCellDimensions() is None:
             x = dna.atoms[['x', 'y', 'z']]
-            d = np.round((x.max() - x.min()) * 2 + 5, -1)
+            d = np.round((x.max() - x.min()) * 2 + 5, -1).to_numpy()
             self.top.setUnitCellDimensions(d)
 
         self.coord = openmm.app.PDBFile(dna.pdb_file)

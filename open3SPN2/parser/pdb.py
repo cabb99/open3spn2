@@ -33,6 +33,7 @@ def parseConfigTable(config_section):
             data += [readData(config_section, a)]
         else:
             print(f'Unexpected row {readData(config_section, a)}')
+    data = [row + [None] * (len(columns) - len(row)) for row in data]
     return pandas.DataFrame(data, columns=columns)
 
 
