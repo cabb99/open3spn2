@@ -4,4 +4,5 @@ from .pdb import parseConfigTable
 from .pdb import parsePDB
 from .pdb import writePDB
 from .pdb import fixPDB
+from .pdb import fixTable
 from .pdb import pdb2table

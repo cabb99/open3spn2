@@ -1,3 +1,5 @@
+import tempfile
+
 import pandas
 import pdbfixer
 import openmm.unit as unit
@@ -31,6 +33,7 @@ def parseConfigTable(config_section):
             data += [readData(config_section, a)]
         else:
             print(f'Unexpected row {readData(config_section, a)}')
+    data = [row + [None] * (len(columns) - len(row)) for row in data]
     return pandas.DataFrame(data, columns=columns)
 
 
@@ -67,10 +70,10 @@ def parsePDB(pdb_file):
     return pdb_atoms
 
 
-def fixPDB(pdb_file):
-    """Uses the pdbfixer library to fix a pdb file, replacing non standard residues, removing
-    hetero-atoms and adding missing hydrogens. The input is a pdb file location,
-    the output is a fixer object, which is a pdb in the openawsem format."""
+def fixPDB(pdb_file, add_hydrogens=True):
+    """Uses the pdbfixer library to fix a pdb file, standardizing atom names, replacing non standard residues,
+    removing hetero-atoms, adding missing heavy atoms and, if add_hydrogens, adding missing hydrogens.
+    The input is a pdb file location, the output is a fixer object, which is a pdb in the openawsem format."""
     fixer = pdbfixer.PDBFixer(filename=pdb_file, )
     fixer.findMissingResidues()
     chains = list(fixer.topology.chains())
@@ -85,8 +88,16 @@ def fixPDB(pdb_file):
     fixer.removeHeterogens(keepWater=False)
     fixer.findMissingAtoms()
     fixer.addMissingAtoms()
-    fixer.addMissingHydrogens(7.0)
+    if add_hydrogens:
+        fixer.addMissingHydrogens(7.0)
     return fixer
+
+
+def fixTable(atoms, add_hydrogens=False):
+    """Fixes an atom table with pdbfixer (see fixPDB) and returns the fixed atom table."""
+    with tempfile.TemporaryDirectory() as folder:
+        pdb_file = writePDB(atoms.reset_index(drop=True), f'{folder}/atoms.pdb')
+        return pdb2table(fixPDB(pdb_file, add_hydrogens=add_hydrogens))
 
 
 def pdb2table(pdb):
@@ -102,7 +113,7 @@ def pdb2table(pdb):
         chain = residue.chain
         pos = pos.value_in_unit(unit.angstrom)
         data += [dict(zip(cols, ['ATOM', int(atom.id), atom.name, '',
-                                 residue.name, chain.id, int(residue.id), '',
+                                 residue.name, chain.id, int(residue.id), residue.insertionCode.strip(),
                                  pos[0], pos[1], pos[2], 0, 0,
                                  atom.element.symbol, '']))]
     atom_list = pandas.DataFrame(data)

@@ -109,7 +109,7 @@ def test_sequence_index_separates_chains_and_keeps_numbering_gaps(dna):
     seqid = chained_sequence_index(atoms)
 
     separation = abs(seqid.values[:, None] - seqid.values[None, :])
-    different_chain = atoms['chainID'].values[:, None] != atoms['chainID'].values[None, :]
+    different_chain = atoms['chainID'].to_numpy()[:, None] != atoms['chainID'].to_numpy()[None, :]
     assert separation[different_chain].min() > separation[~different_chain].max()
 
     assert seqid[gapped].min() - seqid[chain & ~gapped].max() == 11
