@@ -11,6 +11,7 @@ __author__ = 'Carlos Bueno'
 __version__ = '0.3.2'
 
 import configparser
+import warnings
 import numpy as np
 
 import openmm.app
@@ -32,6 +33,16 @@ _af = 1 * unit.degree / unit.radian  # angle scaling factor
 _complement = {'A': 'T', 'T': 'A', 'G': 'C', 'C': 'G'}
 _dnaResidues = ['DA', 'DC', 'DT', 'DG']
 _proteinResidues = ['IPR', 'IGL', 'NGP']
+# Heavy atoms (PDB v3 names) of each coarse-grained bead. 
+# Phosphate O3', OP3 and the phosphate of the first nucleotide are not included in the phosphate bead.
+# The sugar bead includes O2' for RNA but is not included.
+_bead_atoms = {'P': ['P', 'OP1', 'OP2', "O5'"],
+               'S': ["C5'", "C4'", "O4'", "C3'", "C2'", "C1'"],
+               'A': ['N9', 'C8', 'N7', 'C5', 'C6', 'N6', 'N1', 'C2', 'N3', 'C4'],
+               'G': ['N9', 'C8', 'N7', 'C5', 'C6', 'O6', 'N1', 'C2', 'N2', 'N3', 'C4'],
+               'C': ['N1', 'C2', 'O2', 'N3', 'C4', 'N4', 'C5', 'C6'],
+               'T': ['N1', 'C2', 'O2', 'N3', 'C4', 'O4', 'C5', 'C7', 'C6'],
+               'U': ['N1', 'C2', 'O2', 'N3', 'C4', 'O4', 'C5', 'C6']}
 xml = __location__/'3SPN2.xml'
 
 class DNA(object):
@@ -82,7 +93,8 @@ class DNA(object):
         return self.sequence
 
     def computeGeometry(self, sequence=None, atomistic_template=None, Coarse_template=None):
-        """ This function requires X3DNA. It returns a pdb table containing the expected DNA structure"""
+        """ Builds the ideal atomistic double helix of the sequence from the base pair and base step parameters
+        and returns its coarse-grained beads."""
         #print("Computing geometry")
         pair = self.config['Base Pair Geometry']
         step = self.config['Base Step Geometry']
@@ -159,22 +171,23 @@ class DNA(object):
             reverse_strand=[b2] + reverse_strand
             
 
-        template=pandas.concat(forward_strand+reverse_strand)
-        template.reindex()
-        template['serial']=template.index+1
-        self.template=template
+        atomistic=pandas.concat(forward_strand+reverse_strand)
+        atomistic['serial']=atomistic.index+1
+        self.template=atomistic
         if atomistic_template:
-            writePDB(template,pdb_file=atomistic_template)
-        
-        template = self.CoarseGrain(template)
+            writePDB(atomistic,pdb_file=atomistic_template)
+
+        if not self.checkAtoms(atomistic).empty:
+            atomistic = fixTable(atomistic)
+        template = self.CoarseGrain(atomistic)
         if Coarse_template:
             writePDB(template,pdb_file=Coarse_template)
-        
-        try:
-            self.atoms
-        except AttributeError:
-            return template
-        
+        return template
+
+    def mapTemplate(self, template, sequence):
+        """ Returns a copy of the atoms with the coordinates of the matching template beads.
+        The template is the geometry of the sequences of all chains joined in one strand (computeGeometry of
+        getSequences), so each chain takes its beads from its own stretch of the template chain A."""
         template = template[template['chainID'] == 'A']
         original = self.atoms.copy()
         original.index = original['chainID'].astype(str) + '_' + original['resSeq'].astype(str) + '_' + original['name']
@@ -183,9 +196,9 @@ class DNA(object):
             name = r['name']
             seq_template = r['resname'][1:]
             j = r['resSeq'] - 1
-            seq_seq = self.sequence.iloc[j]
+            seq_seq = sequence.iloc[j]
             assert seq_seq == seq_template
-            chain, resseq = self.sequence.index[j]
+            chain, resseq = sequence.index[j]
             ii += [f'{chain}_{resseq}_{name}']
         template.index = ii
         merge = pandas.merge(original, template, left_index=True, right_index=True, how='left', suffixes=['_old', ''])
@@ -215,7 +228,8 @@ class DNA(object):
 
         # Compute B_curved geometry if needed
         if DNAtype == 'B_curved' and template_from_X3DNA:
-            self.template_atoms = self.computeGeometry()
+            sequence = self.getSequences()
+            self.template_atoms = self.mapTemplate(self.computeGeometry(sequence), sequence)
         else:
             self.template_atoms = self.atoms
         # Make an index to build the topology
@@ -421,52 +435,65 @@ class DNA(object):
         return self.pdb_file
 
     @classmethod
-    def fromCoarsePDB(cls, pdb_file, dna_type='B_curved', template_from_X3DNA=True, compute_topology=True):
-        """Initializes a DNA object from a pdb file containing the Coarse Grained atoms"""
+    def fromAtoms(cls, atoms, dna_type='B_curved', template_from_X3DNA=True, output_pdb='clean.pdb', compute_topology=True):
+        """Initializes a DNA object from a table of coarse-grained atoms, such as the one returned by CoarseGrain.
+        The atoms are written to output_pdb unless it is None."""
         self = cls()
-
-        self.atoms = parsePDB(pdb_file)
-        self.atoms.loc[:, 'type'] = self.atoms['name']
-        # Initialize the system from the pdb
+        self.atoms = atoms
         self.DNAtype = dna_type
         if compute_topology:
-            self.parseConfigurationFile()
             self.computeTopology(template_from_X3DNA=template_from_X3DNA)
+        if output_pdb:
+            self.writePDB(output_pdb)
+        return self
+
+    @classmethod
+    def fromCoarsePDB(cls, pdb_file, dna_type='B_curved', template_from_X3DNA=True, compute_topology=True):
+        """Initializes a DNA object from a pdb file containing the Coarse Grained atoms"""
+        atoms = parsePDB(pdb_file)
+        atoms.loc[:, 'type'] = atoms['name']
+        self = cls.fromAtoms(atoms, dna_type, template_from_X3DNA, output_pdb=None, compute_topology=compute_topology)
         self.pdb_file = pdb_file
         return self
 
     @classmethod
     def fromPDB(cls, pdb_file, dna_type='B_curved', template_from_X3DNA=True, output_pdb='clean.pdb', compute_topology=True):
-        """Creates a DNA object from a complete(atomistic) pdb file"""
-        self = cls()
-        pdb = fixPDB(pdb_file)
-        pdb_table = pdb2table(pdb)
+        """Creates a DNA object from a complete(atomistic) pdb file, repaired with pdbfixer before coarse-graining"""
+        atoms = cls.CoarseGrain(pdb2table(fixPDB(pdb_file, add_hydrogens=False)))
+        return cls.fromAtoms(atoms, dna_type, template_from_X3DNA, output_pdb, compute_topology)
 
-        self.atoms = self.CoarseGrain(pdb_table)
-        self.DNAtype = dna_type
-        if compute_topology:
-            self.parseConfigurationFile()
-            self.computeTopology(template_from_X3DNA=template_from_X3DNA)
-        self.writePDB(output_pdb)
-        #self.atomistic_model=temp
-        return self
+    @staticmethod
+    def checkAtoms(pdb_table, rna=False):
+        """ Returns a table of the heavy atoms of the nucleotides in an atom table that have no coarse-grained bead
+        (problem 'unmapped') or that are expected but absent (problem 'missing'). The phosphate bead of the first
+        nucleotide and the O3' of the last nucleotide of each chain may be absent, because 3SPN2 drops them."""
+        sugar = _bead_atoms['S'] + (["O2'"] if rna else [])
+        residues = ['A', 'U', 'G', 'C'] if rna else ['DA', 'DT', 'DG', 'DC']
+        atoms = pdb_table[pdb_table['resname'].isin(residues) & (pdb_table['element'].str.strip() != 'H')]
+        problems = []
+        for chain, chain_atoms in atoms.groupby('chainID'):
+            first, last = chain_atoms['resSeq'].min(), chain_atoms['resSeq'].max()
+            for (resSeq, resname), residue in chain_atoms.groupby(['resSeq', 'resname']):
+                present = set(residue['name'])
+                required = set(sugar + _bead_atoms[resname[-1]])
+                if resSeq != first:
+                    required |= set(_bead_atoms['P'])
+                if resSeq != last:
+                    required.add("O3'")
+                allowed = required | set(_bead_atoms['P']) | {"O3'", 'OP3'}
+                problems += [(chain, resSeq, resname, name, 'unmapped') for name in sorted(present - allowed)]
+                problems += [(chain, resSeq, resname, name, 'missing') for name in sorted(required - present)]
+        return pandas.DataFrame(problems, columns=['chainID', 'resSeq', 'resname', 'name', 'problem'])
 
     @staticmethod
     def CoarseGrain(pdb_table, rna=False):
-        """ Selects DNA atoms from a pdb table and returns a table containing only the coarse-grained atoms for 3SPN2"""
+        """ Selects DNA atoms from a pdb table and returns a table containing only the coarse-grained atoms for 3SPN2."""
         masses = {"H": 1.00794, "C": 12.0107, "N": 14.0067, "O": 15.9994, "P": 30.973762, }
-        CG = {"O5\'": 'P', "C5\'": 'S', "C4\'": 'S', "O4\'": 'S', "C3\'": 'S', "O3\'": 'P',
-              "C2\'": 'S', "C1\'": 'S', "O5*": 'P', "C5*": 'S', "C4*": 'S', "O4*": 'S',
-              "C3*": 'S', "O3*": 'P', "C2*": 'S', "C1*": 'S', "N1": 'B', "C2": 'B', "O2": 'B',
-              "N2": 'B', "N3": 'B', "C4": 'B', "N4": 'B', "C5": 'B', "C6": 'B', "N9": 'B',
-              "C8": 'B', "O6": 'B', "N7": 'B', "N6": 'B', "O4": 'B', "C7": 'B', "P": 'P',
-              "OP1": 'P', "OP2": 'P', "O1P": 'P', "O2P": 'P', "OP3": 'P', "HO5'": 'P',
-              "H5'": 'S', "H5''": 'S', "H4'": 'S', "H3'": 'S', "H2'": 'S', "H2''": 'S',
-              "H1'": 'S', "H8": 'B', "H61": 'B', "H62": 'B', 'H2': 'B', 'H1': 'B', 'H21': 'B',
-              'H22': 'B', 'H3': 'B', 'H71': 'B', 'H72': 'B', 'H73': 'B', 'H6': 'B', 'H41': 'B',
-              'H42': 'B', 'H5': 'B', "HO3'": 'P'}
+        CG = {name: bead for bead in ['P', 'S'] for name in _bead_atoms[bead]}
+        CG.update({name: 'B' for base in ['A', 'G', 'C', 'T', 'U'] for name in _bead_atoms[base]})
+        CG.update({"O3'": 'P', 'OP3': 'P'})
         if rna:
-            CG.update({"HO2\'": 'S', "O2\'": 'S'})
+            CG.update({"O2\'": 'S'})
         cols = ['recname', 'serial', 'name', 'altLoc',
                 'resname', 'chainID', 'resSeq', 'iCode',
                 'x', 'y', 'z', 'occupancy', 'tempFactor',
@@ -479,8 +506,15 @@ class DNA(object):
         else:
             temp = temp[temp['resname'].isin(['DA', 'DT', 'DG', 'DC'])]
 
+        problems = DNA.checkAtoms(temp, rna=rna)
+        if not problems.empty:
+            unmapped = sorted(set(problems.loc[problems['problem'] == 'unmapped', ['resname', 'name']].itertuples(index=False, name=None)))
+            missing = sorted(set(problems.loc[problems['problem'] == 'missing', ['resname', 'name']].itertuples(index=False, name=None)))
+            warnings.warn(f'Atoms do not match the coarse-grained beads: unmapped atoms (left out) {unmapped}, '
+                          f'missing atoms {missing}. Repair the structure with fixTable or fixPDB.')
+
         # Group the atoms by sugar, phosphate or base
-        temp['group'] = temp['name'].replace(CG)
+        temp['group'] = temp['name'].map(CG)
         temp = temp[temp['group'].isin(['P', 'S', 'B'])]
 
         # Move the O3' to the next residue
@@ -506,6 +540,8 @@ class DNA(object):
         Coarse['altLoc'] = ''
         Coarse['iCode'] = ''
         Coarse['charge'] = ''
+        Coarse['occupancy'] = 0.0
+        Coarse['tempFactor'] = 0.0
         # Change name of base to real base
         mask = (Coarse.name == 'B')
         Coarse.loc[mask, 'name'] = Coarse[mask].resname.str[-1]  # takes last letter from the residue name
@@ -539,26 +575,19 @@ class DNA(object):
 
     @classmethod
     def fromSequence(cls, sequence, dna_type='B_curved', output_pdb='clean.pdb', compute_topology=True,atomistic_template='atomistic_dna'):
-        """ Initializes a DNA object from a DNA sequence """
-        self = cls()
-        self.parseConfigurationFile()
+        """ Initializes a DNA object from a DNA sequence, coarse-graining its ideal double helix """
+        builder = cls()
+        builder.parseConfigurationFile()
         sequence = pandas.Series([a for a in sequence], index=[('A', i) for i in range(len(sequence))])
-        # Make a possible structure
-        self.computeGeometry(sequence, atomistic_template=atomistic_template)
-        self.DNAtype=dna_type
-
-        # Make a clean pdb file
-        self = self.fromPDB(atomistic_template, dna_type=dna_type, output_pdb=output_pdb,
-                            compute_topology=compute_topology)
-        return self
+        atoms = builder.computeGeometry(sequence, atomistic_template=atomistic_template)
+        return cls.fromAtoms(atoms, dna_type, output_pdb=output_pdb, compute_topology=compute_topology)
 
     @classmethod
     def fromXYZ(cls, xyz_file, dnatype='B_curved', template_from_X3DNA=True, output_pdb='clean.pdb', compute_topology=True):
         """ Initializes DNA object from xyz file (as seen on the examples) """
         # Parse the file
-        self = cls()
-        self.atoms = pandas.read_csv(xyz_file, delim_whitespace=True, skiprows=2,
-                                     names=['name', 'x', 'y', 'z'])
+        atoms = pandas.read_csv(xyz_file, delim_whitespace=True, skiprows=2,
+                                names=['name', 'x', 'y', 'z'])
 
         # Compute residues and chains
         residue = 0
@@ -566,7 +595,7 @@ class DNA(object):
         chain = 0
         chains = []
         sugar = True
-        for t in self.atoms['name']:
+        for t in atoms['name']:
             if t == 'P':
                 residue += 1
                 sugar = False
@@ -577,27 +606,22 @@ class DNA(object):
                 sugar = True
             residues += [residue]
             chains += [chain]
-        self.atoms['resSeq'] = residues
-        self.atoms['chainID'] = chains
+        atoms['resSeq'] = residues
+        atoms['chainID'] = chains
 
         # compute resid and resname fields
         res_ix = {}
-        # min_res = self.atoms.groupby('chain')['resSeq'].min()
-        # max_res = self.atoms.groupby('chain')['resSeq'].max()
-        for i, res in self.atoms[~self.atoms['name'].isin(['S', 'P'])].iterrows():
+        # min_res = atoms.groupby('chain')['resSeq'].min()
+        # max_res = atoms.groupby('chain')['resSeq'].max()
+        for i, res in atoms[~atoms['name'].isin(['S', 'P'])].iterrows():
             resname = 'D' + res['name']
             # if res['resSeq'] == min_res[res['chain']]:
             #    resname += 'i'
             # if res['resSeq'] == max_res[res['chain']]:
             #    resname += 'f'
             res_ix.update({(res['chainID'], res['resSeq']): resname})
-        self.atoms['resname'] = [res_ix[(r['chainID'], r['resSeq'])] for i, r in self.atoms.iterrows()]
-        self.DNAtype = dnatype
-        if compute_topology:
-            self.parseConfigurationFile()
-            self.computeTopology(template_from_X3DNA=template_from_X3DNA)
-        self.writePDB(output_pdb)
-        return self
+        atoms['resname'] = [res_ix[(r['chainID'], r['resSeq'])] for i, r in atoms.iterrows()]
+        return cls.fromAtoms(atoms, dnatype, template_from_X3DNA, output_pdb, compute_topology)
 
 
 class System(openmm.System):
