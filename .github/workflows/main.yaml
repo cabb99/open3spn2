@@ -3,12 +3,12 @@ name: CI
 on:
   push:
     branches:
+      - master
       - dev
-      - main
   pull_request:
     branches:
+      - master
       - dev
-      - main
 
 jobs:
   test:
@@ -22,35 +22,18 @@ jobs:
     steps:
     - uses: actions/checkout@v4
 
-    - name: Set up Conda
-      uses: conda-incubator/setup-miniconda@v2
+    - name: Set up the conda environment
+      uses: conda-incubator/setup-miniconda@v3
       with:
-        miniconda-version: "latest"
-        channels: conda-forge,defaults
-
-    - name: Create and activate Conda environment
-      shell: bash -l {0}
-      run: |
-        conda env create -f environment.yml
-        
+        miniforge-version: latest
+        environment-file: environment.yml
+        activate-environment: open3spn2
+        python-version: ${{ matrix.python-version }}
 
     - name: Install package
-      shell: bash -l {0}
-      run: |
-        conda activate open3spn2
-        pip install -e .
+      shell: bash -el {0}
+      run: pip install -e .
 
     - name: Run tests with pytest
-      shell: bash -l {0}
-      run: |
-        conda activate open3spn2
-        pytest --skip-platform=opencl tests/
-
-    - name: Slack Notification (on failure)
-      if: failure()
-      uses: act10ns/slack@v2
-      with:
-        status: ${{ job.status }}
-        steps: ${{ toJson(steps) }}
-      env:
-        SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+      shell: bash -el {0}
+      run: pytest --skip-platform=opencl tests/
