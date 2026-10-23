@@ -30,6 +30,36 @@ def chained_sequence_index(atoms, chain_gap=100):
     return resSeq - atoms['chainID'].map(chain_start) + atoms['chainID'].map(chain_offset)
 
 
+def sequence_parameters(dna, chain_gap=100):
+    """Per-particle parameters of the sequence separation masks (see `sequence_mask`), read from the topology.
+
+    `seqid` is the chained_sequence_index of the particle. `period` is the number of residues of its chain if
+    the bonds of the topology join the last residue of the chain to the first one, and 0 otherwise. Chains are
+    at least `period` residues apart, so pairs on different chains are never masked."""
+    atoms = dna.atoms
+    chain, resSeq = atoms['chainID'].to_numpy(), atoms['resSeq'].astype(int).to_numpy()
+    first = atoms.groupby('chainID')['resSeq'].min()
+    last = atoms.groupby('chainID')['resSeq'].max()
+    bonds = getattr(dna, 'bonds', pandas.DataFrame(columns=['aai', 'aaj']))
+    closed = {chain[i] for i, j in zip(bonds['aai'], bonds['aaj'])
+              if chain[i] == chain[j] and first[chain[i]] != last[chain[i]]
+              and {resSeq[i], resSeq[j]} == {first[chain[i]], last[chain[i]]}}
+    period = atoms['chainID'].map({c: int(last[c] - first[c] + 1) for c in closed}).fillna(0).astype(int)
+    seqid = chained_sequence_index(atoms, chain_gap=max([chain_gap] + list(period)))
+    return pandas.DataFrame({'seqid': seqid, 'period': period}, index=atoms.index)
+
+
+def sequence_mask(min_seq_sep, seqid1, seqid2, period1, period2):
+    """Energy expression that is 0 for pairs closer than `min_seq_sep` residues along their chain and 1 otherwise.
+
+    The separation is ``abs(seqid1 - seqid2)``; in a chain with a period (see `sequence_parameters`) it is also
+    counted the other way around the chain. With period 0 the second factor is 1."""
+    separation = f'abs({seqid2}-{seqid1})'
+    period = f'max({period1},{period2})'
+    return (f'step({separation}-{min_seq_sep})'
+            f'*(1-step({separation}-{period}+{min_seq_sep}-0.5)*step({period}-0.5-{separation}))')
+
+
 class Bond(DNAForce, openmm.CustomBondForce):
     def __init__(self, dna, k=1, k_name=None, force_group=6):
         self.k = k
@@ -174,7 +204,7 @@ class BasePair(DNAForce, openmm.CustomHbondForce):
     def reset(self):
         def basePairForce():
             pairForce = openmm.CustomHbondForce(f'''{self.k_name}*seqsep*energy;
-                        seqsep=step(abs(seqid_a-seqid_d)-{self.min_seq_sep});
+                        seqsep={sequence_mask(self.min_seq_sep, 'seqid_d', 'seqid_a', 'period_d', 'period_a')};
                         energy=rep+1/2*(1+cos(dphi))*fdt1*fdt2*attr;
                         rep  = epsilon*(1-exp(-alpha*dr))^2*(1-step(dr));
                         attr = epsilon*(1-exp(-alpha*dr))^2*step(dr)-epsilon;
@@ -204,6 +234,8 @@ class BasePair(DNAForce, openmm.CustomHbondForce):
             pairForce.addPerDonorParameter('alpha')
             pairForce.addPerDonorParameter('seqid_d')
             pairForce.addPerAcceptorParameter('seqid_a')
+            pairForce.addPerDonorParameter('period_d')
+            pairForce.addPerAcceptorParameter('period_a')
             pairForce.addGlobalParameter('pi', np.pi)
             pairForce.addGlobalParameter(self.k_name, self.k)
             self.force = pairForce
@@ -220,7 +252,7 @@ class BasePair(DNAForce, openmm.CustomHbondForce):
         pair_definition = self.dna.pair_definition[self.dna.pair_definition['DNA'] == self.dna.DNAtype]
         atoms = self.dna.atoms.copy()
         atoms['index'] = atoms.index
-        atoms['seqid'] = chained_sequence_index(atoms)
+        atoms[['seqid', 'period']] = sequence_parameters(self.dna)
         atoms.index = zip(atoms['chainID'], atoms['resSeq'], atoms['name'])
         is_dna = atoms['resname'].isin(_dnaResidues)
 
@@ -261,10 +293,10 @@ class BasePair(DNAForce, openmm.CustomHbondForce):
             # Add donors and acceptors
             # Here I am including the same atom twice,
             # it doesn't seem to break things
-            for d1, d2, seqid in zip(D1_list, D2_list, D1['seqid']):
-                self.forces[i].addDonor(d1, d2, -1, parameters + [int(seqid)])
-            for a1, a2, seqid in zip(A1_list, A2_list, A1['seqid']):
-                self.forces[i].addAcceptor(a1, a2, -1, [int(seqid)])
+            for d1, d2, seqid, period in zip(D1_list, D2_list, D1['seqid'], D1['period']):
+                self.forces[i].addDonor(d1, d2, -1, parameters + [int(seqid), int(period)])
+            for a1, a2, seqid, period in zip(A1_list, A2_list, A1['seqid'], A1['period']):
+                self.forces[i].addAcceptor(a1, a2, -1, [int(seqid), int(period)])
 
     def addForce(self, system):
         for f in self.forces:
@@ -285,7 +317,7 @@ class CrossStacking(DNAForce):
     def reset(self):
         def crossStackingForce(parametersOnDonor=False):
             crossForce = openmm.CustomHbondForce(f'''{self.k_name}*seqsep*energy;
-                         seqsep   = step(abs(seqid_a-seqid_d)-{self.min_seq_sep});
+                         seqsep   = {sequence_mask(self.min_seq_sep, 'seqid_d', 'seqid_a', 'period_d', 'period_a')};
                          energy   = fdt3*fdtCS*attr/2;
                          attr     = epsilon*(1-exp(-alpha*dr))^2*step(dr)-epsilon;
                          fdt3     = max(f1*pair0t3,pair1t3);
@@ -319,6 +351,8 @@ class CrossStacking(DNAForce):
                     crossForce.addPerAcceptorParameter(p)
             crossForce.addPerDonorParameter('seqid_d')
             crossForce.addPerAcceptorParameter('seqid_a')
+            crossForce.addPerDonorParameter('period_d')
+            crossForce.addPerAcceptorParameter('period_a')
             crossForce.addGlobalParameter('pi', np.pi)
             crossForce.addGlobalParameter(self.k_name, self.k)
             crossForce.setForceGroup(self.force_group)
@@ -332,40 +366,18 @@ class CrossStacking(DNAForce):
     def defineInteraction(self):
         atoms = self.dna.atoms.copy()
         atoms['index'] = atoms.index
-        atoms['seqid'] = chained_sequence_index(atoms)
-        atoms.index = zip(atoms['chainID'], atoms['resSeq'], atoms['name'].replace(['A', 'C', 'T', 'G'], 'B'))
-        is_dna = atoms['resname'].isin(_dnaResidues)
-        bases = atoms[atoms['name'].isin(['A', 'T', 'G', 'C']) & is_dna]
-        D1 = bases
-        D2 = atoms.reindex([(c, r, 'S') for c, r, n in bases.index])
-        D3 = atoms.reindex([(c, r + 1, 'B') for c, r, n in bases.index])
-        A1 = D1
-        A2 = D2
-        A3 = atoms.reindex([(c, r - 1, 'B') for c, r, n in bases.index])
+        atoms[['seqid', 'period']] = sequence_parameters(self.dna)
 
-        # Select only bases where the other atoms exist
-        D2.index = D1.index
-        D3.index = D1.index
-        temp = pandas.concat([D1, D2, D3], axis=1, keys=['D1', 'D2', 'D3'])
-        sel = temp[temp['D3', 'name'].isin(['A', 'T', 'G', 'C']) &  # D3 must be a base
-                   temp['D2', 'name'].isin(['S']) &  # D2 must be a sugar
-                   (temp['D3', 'chainID'] == temp['D1', 'chainID']) &  # D3 must be in the same chain
-                   (temp['D2', 'chainID'] == temp['D1', 'chainID'])].index  # D2 must be in the same chain
-        D1 = atoms.reindex(sel)
-        D2 = atoms.reindex([(c, r, 'S') for c, r, n in sel])
-        D3 = atoms.reindex([(c, r + 1, 'B') for c, r, n in sel])
-
-        # Aceptors
-        A2.index = A1.index
-        A3.index = A1.index
-        temp = pandas.concat([A1, A2, A3], axis=1, keys=['A1', 'A2', 'A3'])
-        sel = temp[temp['A3', 'name'].isin(['A', 'T', 'G', 'C']) &  # A3 must be a base
-                   temp['A2', 'name'].isin(['S']) &  # A2 must be a sugar
-                   (temp['A3', 'chainID'] == temp['A1', 'chainID']) &  # A3 must be in the same chain
-                   (temp['A2', 'chainID'] == temp['A1', 'chainID'])].index  # A2 must be in the same chain
-        A1 = atoms.reindex(sel)
-        A2 = atoms.reindex([(c, r, 'S') for c, r, n in sel])
-        A3 = atoms.reindex([(c, r - 1, 'B') for c, r, n in sel])
+        # Donors (B r, S r, B r+1) and acceptors (B r+1, S r+1, B r) of every stacked base step of the topology,
+        # whose rows are (S r, B r, B r+1)
+        stackings = self.dna.stackings
+        sugar = atoms[atoms['name'] == 'S'].set_index(['chainID', 'resSeq'])['index']
+        D1 = atoms.loc[stackings['aaj']]
+        D2 = atoms.loc[stackings['aai']]
+        D3 = atoms.loc[stackings['aak']]
+        A1 = D3
+        A2 = atoms.loc[[sugar[(c, r)] for c, r in zip(D3['chainID'], D3['resSeq'])]]
+        A3 = D1
 
         # Parameters
         cross_definition = self.dna.cross_definition[self.dna.cross_definition['DNA'] == self.dna.DNAtype].copy()
@@ -390,7 +402,7 @@ class CrossStacking(DNAForce):
                           param['eps_cs2'],
                           param['alpha_cs2'],
                           param['Sigma_2']]
-            seqid = [int(donator.seqid)]
+            seqid = [int(donator.seqid), int(donator.period)]
             groups[d1t][0]['donors'][(d1, d2, d3)] = c1.addDonor(d1, d2, d3, seqid)
             groups[d1t][1]['acceptors'][(d1, d2, d3)] = c2.addAcceptor(d1, d2, d3, parameters + seqid)
             donors[d1t] += [d1]
@@ -410,7 +422,7 @@ class CrossStacking(DNAForce):
                           param['eps_cs1'],
                           param['alpha_cs1'],
                           param['Sigma_1']]
-            seqid = [int(aceptor.seqid)]
+            seqid = [int(aceptor.seqid), int(aceptor.period)]
             groups[d1t][0]['acceptors'][(a1, a2, a3)] = c1.addAcceptor(a1, a2, a3, parameters + seqid)
             groups[d1t][1]['donors'][(a1, a2, a3)] = c2.addDonor(a1, a2, a3, seqid)
             aceptors[d1t] += [a1]
@@ -462,7 +474,7 @@ class Exclusion(DNAForce, openmm.CustomNonbondedForce):
         # in sequence, so those pairs contribute no energy and no force.
         exclusionForce = openmm.CustomNonbondedForce(f"""{self.k_name}*mask*seqsep*core;
                          core=(epsilon*((sigma/r)^12-2*(sigma/r)^6)+epsilon)*step(sigma-r);
-                         seqsep=step(abs(seqid2-seqid1)-{self.min_seq_sep});
+                         seqsep={sequence_mask(self.min_seq_sep, 'seqid1', 'seqid2', 'period1', 'period2')};
                          mask=1-step(bt1+bt2-4.5)*step(5.5-bt1-bt2);
                          sigma=0.5*(sigma1+sigma2);
                          epsilon=sqrt(epsilon1*epsilon2)""")
@@ -470,6 +482,7 @@ class Exclusion(DNAForce, openmm.CustomNonbondedForce):
         exclusionForce.addPerParticleParameter('sigma')
         exclusionForce.addPerParticleParameter('bt')
         exclusionForce.addPerParticleParameter('seqid')
+        exclusionForce.addPerParticleParameter('period')
         exclusionForce.addGlobalParameter(self.k_name, self.k)
         exclusionForce.setCutoffDistance(1.8)
         exclusionForce.setForceGroup(self.force_group)  # There can not be multiple cutoff distance on the same force group
@@ -491,14 +504,14 @@ class Exclusion(DNAForce, openmm.CustomNonbondedForce):
         is_dna = self.dna.atoms['resname'].isin(_dnaResidues)
         atoms = self.dna.atoms.copy()
         atoms['is_dna'] = is_dna
-        atoms['seqid'] = chained_sequence_index(atoms)
+        atoms[['seqid', 'period']] = sequence_parameters(self.dna)
         for i, atom in atoms.iterrows():
             if atom.is_dna:
                 param = particle_definition.loc[atom['name']]
                 parameters = [param.epsilon, param.radius, _base_type.get(atom['name'], 0)]
             else:
                 parameters = [0, .1, 0]  # Null energy, some radius, non-base
-            self.force.addParticle(parameters + [int(atom.seqid)])
+            self.force.addParticle(parameters + [int(atom.seqid), int(atom.period)])
 
 
 class Electrostatics(DNAForce, openmm.CustomNonbondedForce):
@@ -535,9 +548,10 @@ class Electrostatics(DNAForce, openmm.CustomNonbondedForce):
 
         electrostaticForce = openmm.CustomNonbondedForce(f"""{self.k_name}*seqsep*energy;
                                                                 energy=q1*q2*exp(-r/dh_length)/denominator/r;
-                                                                seqsep=step(abs(seqid2-seqid1)-{self.min_seq_sep});""")
+                                                                seqsep={sequence_mask(self.min_seq_sep, 'seqid1', 'seqid2', 'period1', 'period2')};""")
         electrostaticForce.addPerParticleParameter('q')
         electrostaticForce.addPerParticleParameter('seqid')
+        electrostaticForce.addPerParticleParameter('period')
         electrostaticForce.addGlobalParameter('dh_length', ldby)
         electrostaticForce.addGlobalParameter('denominator', denominator)
         electrostaticForce.addGlobalParameter(self.k_name, self.k)
@@ -559,7 +573,7 @@ class Electrostatics(DNAForce, openmm.CustomNonbondedForce):
         is_dna = self.dna.atoms['resname'].isin(_dnaResidues)
         atoms = self.dna.atoms.copy()
         atoms['is_dna'] = is_dna
-        atoms['seqid'] = chained_sequence_index(atoms)
+        atoms[['seqid', 'period']] = sequence_parameters(self.dna)
 
         for i, atom in atoms.iterrows():
             if atom.is_dna:
@@ -568,4 +582,4 @@ class Electrostatics(DNAForce, openmm.CustomNonbondedForce):
             else:
                 parameters = [0]  # No charge if it is not DNA
             # print (i,parameters)
-            self.force.addParticle(parameters + [int(atom.seqid)])
+            self.force.addParticle(parameters + [int(atom.seqid), int(atom.period)])

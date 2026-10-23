@@ -23,6 +23,7 @@ import pandas
 from pathlib import Path
 
 from .geometry import Transform
+from . import circular as circular_dna
 from .force import *
 from .parser import *
 
@@ -47,6 +48,9 @@ xml = __location__/'3SPN2.xml'
 
 class DNA(object):
     """ A Coarse Grained DNA object."""
+    # Callables patch(dna) applied at the end of computeTopology, e.g. to add interactions that close a chain
+    topology_patches = ()
+
     def __init__(self, periodic=True):
         """Initializes an DNA object"""
         self.periodic = periodic
@@ -382,6 +386,9 @@ class DNA(object):
             d = np.arctan2(y, x) / np.pi * 180
             self.dihedrals['t0'] = -d - 180
 
+        for patch in self.topology_patches:
+            patch(self)
+
     def create_mutant(self, mutations):
         """Returns a new DNA identical to this one but with the given base identities.
 
@@ -423,8 +430,24 @@ class DNA(object):
             mutant.atoms.loc[base_bead, 'type'] = mut['target']
             mutant.atoms.loc[base_bead, 'element'] = element[mut['target']]
 
+        mutant.topology_patches = list(self.topology_patches)
         mutant.computeTopology(template_from_X3DNA=getattr(self, 'template_from_X3DNA', False))
         return mutant
+
+    def circularize(self, chains=True, join=None, atomistic=None, output_pdb='clean.pdb', compute_topology=None):
+        """Closes chains into circles (see open3SPN2.circular.circularize)."""
+        return circular_dna.circularize(self, chains=chains, join=join, atomistic=atomistic, output_pdb=output_pdb,
+                                        compute_topology=compute_topology)
+
+    def bendToCircle(self, delta_linking_number=0, superhelical_density=None, closed=False, first=0, last=None):
+        """Bends a double stranded DNA into a planar circle (see open3SPN2.circular.bend_to_circle)."""
+        return circular_dna.bend_to_circle(self, delta_linking_number=delta_linking_number,
+                                           superhelical_density=superhelical_density, closed=closed, first=first,
+                                           last=last)
+
+    def computeLinkingNumber(self, positions=None):
+        """Linking number of the two strands of a circular duplex (see open3SPN2.circular.compute_linking_number)."""
+        return circular_dna.compute_linking_number(self, positions)
 
     def writePDB(self, pdb_file='clean.pdb'):
         # Compute element fields
@@ -580,8 +603,21 @@ class DNA(object):
 #        pass
 
     @classmethod
-    def fromSequence(cls, sequence, dna_type='B_curved', output_pdb='clean.pdb', compute_topology=True,atomistic_template='atomistic_dna'):
-        """ Initializes a DNA object from a DNA sequence, coarse-graining its ideal double helix """
+    def fromSequence(cls, sequence, dna_type='B_curved', output_pdb='clean.pdb', compute_topology=True,atomistic_template='atomistic_dna',
+                     circular=False, infinite=False, join=None, delta_linking_number=0, superhelical_density=None):
+        """ Initializes a DNA object from a DNA sequence, coarse-graining its ideal double helix.
+
+        With circular=True the duplex is built as a closed circle, and with infinite=True as a straight helix whose
+        ends are bonded through the periodic box given in dna.periodic_box (see open3SPN2.circular.from_sequence):
+            join: groups of chains joined end to end into a single chain, e.g. [['A', 'B']].
+            delta_linking_number: turns added to (positive) or removed from (negative) the relaxed
+                linking number of the circle, to build supercoiled DNA.
+            superhelical_density: alternative to delta_linking_number, sigma = delta_Lk / Lk0."""
+        if circular or infinite:
+            return circular_dna.from_sequence(cls, sequence, dna_type=dna_type, output_pdb=output_pdb,
+                                              compute_topology=compute_topology, atomistic_template=atomistic_template,
+                                              infinite=infinite, join=join, delta_linking_number=delta_linking_number,
+                                              superhelical_density=superhelical_density)
         builder = cls()
         builder.parseConfigurationFile()
         sequence = pandas.Series([a for a in sequence], index=[('A', i) for i in range(len(sequence))])
@@ -646,7 +682,8 @@ class System(openmm.System):
         self._wrapped_system = self.forcefield.createSystem(self.top)
         self.periodicBox = periodicBox
         if periodicBox is not None:
-            self._wrapped_system.setDefaultPeriodicBoxVectors(*np.diag(self.periodic_box))
+            self._wrapped_system.setDefaultPeriodicBoxVectors(*[openmm.Vec3(*row) for row in np.diag(periodicBox)])
+            self.top.setUnitCellDimensions(periodicBox)
             self.dna.periodic = True
         elif self.dna.periodic == True:
             self.dna.periodic = False

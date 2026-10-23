@@ -138,6 +138,90 @@ The forces and system in open3SPN can be treated as forces and systems from open
 .. ----------------------
 
 
+Circular DNA (plasmids)
+-----------------------
+A circular DNA is a chain whose last residue is bonded to its first one. The forcefield does not read bonds
+from the pdb file, so a circular structure loaded from a file is linear until it is closed with
+``DNA.circularize``. Closing a chain adds to the topology the bonds, angles, stackings and dihedrals that cross
+its end; the cross stackings and the sequence separation masks of the nonbonded forces follow that topology,
+so they count residues around the circle.
+
+From a sequence, ``circular=True`` builds the duplex as a planar circle on the xy plane. The twist is adjusted
+so the circle has an integer linking number ``Lk = Lk0 + delta_linking_number``, where ``Lk0`` is the number of
+helical turns of the relaxed duplex. Negative values build negatively supercoiled (underwound) DNA and positive
+values positively supercoiled DNA. During the simulation the excess twist of the planar circle can convert to
+writhe or, for underwound DNA, open denaturation bubbles.
+
+.. code:: python
+
+    import open3SPN2
+
+    seq = 'ATACAAAGGTGCGAGGTTTC' * 25  # 500 bp
+    dna = open3SPN2.DNA.fromSequence(seq, circular=True, delta_linking_number=-3,
+                                     output_pdb='plasmid.pdb', atomistic_template='plasmid_atomistic.pdb')
+    # or superhelical_density=-0.06 instead of delta_linking_number
+    print(dna.bend.radius, dna.bend.relaxed_linking_number, dna.bend.linking_number)
+
+    dna.periodic = False
+    s = open3SPN2.System(dna, periodicBox=None)
+    s.add3SPN2forces()
+    simulation = s.initializeMD(platform_name='OpenCL')
+    simulation.minimizeEnergy()
+
+.. raw:: html
+
+    <video src="_static/plasmid.mp4" width="420" controls loop muted playsinline></video>
+
+*The 500 bp plasmid of* ``examples/circular/plasmid.py`` *(ΔLk = −3, σ = −0.064) over 4 ns at 300 K. The
+linking number stays at 44. In this run the underwinding opens three denaturation bubbles rather than writhing
+the circle.*
+
+A circular structure (e.g. the minicircle 13GQ of the PDB) is loaded as usual and then closed. Coarse graining
+drops the phosphate of the first residue of each chain; with the atomistic structure it is rebuilt as the
+phosphate group that bridges the last and first residues, otherwise it is placed from a phosphate step of the
+chain. A straight duplex can be bent into a circle first.
+
+.. code:: python
+
+    plasmid = open3SPN2.DNA.fromPDB('13GQ.pdb')
+    plasmid.circularize(atomistic='13GQ.pdb')
+
+    coarse = open3SPN2.DNA.fromCoarsePDB('coarse_grained_plasmid.pdb')
+    coarse.circularize()
+
+    bent = open3SPN2.DNA.fromPDB('straight_duplex.pdb')
+    bent.bendToCircle(delta_linking_number=-2)
+    bent.circularize()
+
+The linking number of the two strands is a topological invariant; ``dna.computeLinkingNumber(positions)``
+measures it on any frame (in the units of the structure) and is a quick check that the plasmid keeps its
+topology.
+
+The strands can also be joined end to end before closing them with ``join=[['A', 'B']]``, which bonds the 3'
+end of strand A to the 5' end of strand B (and strand B to strand A when the chain is closed). The result is a
+single circular strand that runs along both sides of the duplex. The joints span the width of the duplex, so
+minimize the energy before running dynamics.
+
+An infinite DNA is a straight duplex whose ends are bonded to their own images through a periodic box, so it has
+no ends. ``infinite=True`` builds it along z, with a box length along z of one period and each strand winding an
+integer number of turns per period (``delta_linking_number`` adds or removes turns, which the box then keeps
+fixed). Pass the box to the System; the forces use periodic boundary conditions and the closing bonds are measured
+to the nearest image.
+
+.. code:: python
+
+    dna = open3SPN2.DNA.fromSequence(seq, infinite=True, output_pdb='infinite.pdb')
+    s = open3SPN2.System(dna, periodicBox=dna.periodic_box)  # nm, 20 x 20 x period by default
+    s.add3SPN2forces()
+
+.. raw:: html
+
+    <video src="_static/infinite_dna.mp4" width="100%" controls loop muted playsinline></video>
+
+*The 105 bp infinite DNA of* ``examples/circular/infinite_dna.py`` *over 4 ns at 300 K. It is shown with its
+periodic box and one image on each side along z. The strands are bonded through the box, so the helix continues
+into its images.*
+
 Alchemical base transformations
 -------------------------------
 Because every nucleotide in 3SPN.2 is represented by the same three beads (phosphate, sugar and a
