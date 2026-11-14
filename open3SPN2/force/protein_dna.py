@@ -10,9 +10,13 @@ _proteinResidues = ['IPR', 'IGL', 'NGP']
 
 class ExclusionProteinDNA(ProteinDNAForce):
     """ Protein-DNA exclusion potential"""
-    def __init__(self, dna, protein, k=1, force_group=14):
+    def __init__(self, dna, protein, k=1, radius_override = None, force_group=14):
         self.k = k
         self.force_group = force_group
+        # replace radii with this number; equivalent to
+        # changing the "radius" in the [Protein-DNA particles]
+        # section of the .conf file to this number
+        self.radius_override = radius_override
         super().__init__(dna, protein)
 
     def reset(self):
@@ -26,6 +30,15 @@ class ExclusionProteinDNA(ProteinDNAForce):
         exclusionForce.addPerParticleParameter('epsilon')
         exclusionForce.addPerParticleParameter('sigma')
         exclusionForce.addPerParticleParameter('cutoff')
+        # Historically, we've used cutoffs of 2.5*sigma,
+        # with 6.2 angstroms being the largest sigma ever used,
+        # so 2.5*6.2=15.5 angstroms is the biggest it would ever get.
+        # For smaller sigmas, using 1.55 gives us even better accuracy.
+        # There may be some computational cost for using 1.55 instead
+        # of 2.5*sigma for sigma<6.2, but it should be small compared 
+        # to the cost of the electrostatic term going all the way
+        # out to 4-5 nm, so it shouldn't make much of a difference
+        # in the simulation efficiency.
         exclusionForce.setCutoffDistance(1.55)
         # exclusionForce.setUseLongRangeCorrection(True)
         exclusionForce.setForceGroup(self.force_group)  # There can not be multiple cutoff distance on the same force group
@@ -60,15 +73,25 @@ class ExclusionProteinDNA(ProteinDNAForce):
         for i, atom in atoms.iterrows():
             if atom.is_dna:
                 param = particle_definition.loc['DNA' + atom['name']]
-                parameters = [param.epsilon,
-                              param.radius,
-                              param.cutoff]
+                if self.radius_override == None:
+                    parameters = [param.epsilon,
+                                param.radius,
+                                param.cutoff]
+                else:
+                    parameters = [param.epsilon,
+                                self.radius_override,
+                                param.cutoff]
                 DNA_list += [i]
             elif atom.is_protein:
                 param = particle_definition.loc['Protein' + atom['name']]
-                parameters = [param.epsilon,
-                              param.radius,
-                              param.cutoff]
+                if self.radius_override == None:
+                    parameters = [param.epsilon,
+                                param.radius,
+                                param.cutoff]
+                else:
+                    parameters = [param.epsilon,
+                                self.radius_override,
+                                param.cutoff]
                 protein_list += [i]
             else:
                 print(f'Residue {i} not included in protein-DNA interactions')
@@ -81,9 +104,13 @@ class ExclusionProteinDNA(ProteinDNAForce):
 
 class ElectrostaticsProteinDNA(ProteinDNAForce):
     """DNA-protein and protein-protein electrostatics."""
-    def __init__(self, dna, protein, k=1, force_group=15):
+    def __init__(self, dna, protein, k=1, ldby = 1.2 * unit.nanometer, force_group=15):
         self.k = k
         self.force_group = force_group
+        self.ldby = ldby
+        self.cutoff_distance = max(
+            4*ldby, # protect ourselves if we're using a big ldby
+            5.0*unit.nanometer)
         super().__init__(dna, protein)
 
     def reset(self):
@@ -94,7 +121,7 @@ class ElectrostaticsProteinDNA(ProteinDNAForce):
         ec = 1.60217653E-19 * unit.coulomb  # proton charge
         pv = 8.8541878176E-12 * unit.farad / unit.meter  # dielectric permittivity of vacuum
 
-        ldby = 1.2 * unit.nanometer # np.sqrt(dielectric * pv * kb * T / (2.0 * Na * ec ** 2 * C))
+        #ldby = 1.2 * unit.nanometer # np.sqrt(dielectric * pv * kb * T / (2.0 * Na * ec ** 2 * C))
         denominator = 4 * np.pi * pv * dielectric / (Na * ec ** 2)
         denominator = denominator.in_units_of(unit.kilocalorie_per_mole**-1 * unit.nanometer**-1)
         #print(ldby, denominator)
@@ -103,10 +130,13 @@ class ElectrostaticsProteinDNA(ProteinDNAForce):
                              energy=q1*q2*exp(-r/inter_dh_length)/inter_denominator/r;""")
         electrostaticForce.addPerParticleParameter('q')
         electrostaticForce.addGlobalParameter('k_electro_protein_DNA', k)
-        electrostaticForce.addGlobalParameter('inter_dh_length', ldby)
+        electrostaticForce.addGlobalParameter('inter_dh_length', self.ldby)
         electrostaticForce.addGlobalParameter('inter_denominator', denominator)
 
-        electrostaticForce.setCutoffDistance(4)
+        cutoff_nm = self.cutoff_distance.value_in_unit(unit.nanometer)
+        electrostaticForce.setCutoffDistance(cutoff_nm)
+        print(f"protein dna screening length {self.ldby} nm")
+        print(f"protein dna cutoff {electrostaticForce.getCutoffDistance()} nm")
         if self.periodic:
             electrostaticForce.setNonbondedMethod(electrostaticForce.CutoffPeriodic)
         else:
